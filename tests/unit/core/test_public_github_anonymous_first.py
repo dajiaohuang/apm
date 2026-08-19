@@ -5,13 +5,14 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
+from types import MappingProxyType
 from unittest.mock import MagicMock, call, patch
 from urllib.parse import urlparse
 
 import pytest
 import requests
 
-from apm_cli.core.auth import AuthResolver
+from apm_cli.core.auth import _GIT_MESSAGE_LOCALE_ENV, AuthResolver
 from apm_cli.core.token_manager import GitHubTokenManager
 from apm_cli.deps.github_downloader import GitHubPackageDownloader
 from apm_cli.deps.github_rate_limit import GitHubThrottle, GitHubThrottleError
@@ -498,6 +499,16 @@ def test_git_message_locale_is_normalized_over_inherited_locale(
 
     assert env["LC_ALL"] == "C"
     assert env["LANGUAGE"] == "C"
+
+
+def test_git_message_locale_constant_rejects_mutation() -> None:
+    """The pinned locale cannot be reopened by a caller holding the constant."""
+    assert isinstance(_GIT_MESSAGE_LOCALE_ENV, MappingProxyType)
+
+    with pytest.raises(TypeError):
+        _GIT_MESSAGE_LOCALE_ENV["LC_ALL"] = "id_ID.UTF-8"  # type: ignore[index]
+
+    assert AuthResolver._build_git_env()["LC_ALL"] == "C"
 
 
 def test_translated_clone_failure_still_retries_with_a_token() -> None:

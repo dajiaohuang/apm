@@ -35,8 +35,9 @@ import re
 import sys
 import threading
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple, TypeVar
 
 from apm_cli.core.host_providers import (
@@ -147,7 +148,7 @@ _GIT_CHILD_TOKEN_ENV_PREFIXES = ("GITHUB_APM_PAT_",)
 # strings. ``LANGUAGE`` takes precedence over ``LC_ALL`` for translations and
 # must be neutralised too. GitPython already does this for every command it
 # runs; this keeps APM's own subprocess calls consistent with it.
-_GIT_MESSAGE_LOCALE_ENV: dict[str, str] = {"LC_ALL": "C", "LANGUAGE": "C"}
+_GIT_MESSAGE_LOCALE_ENV: Mapping[str, str] = MappingProxyType({"LC_ALL": "C", "LANGUAGE": "C"})
 
 
 # ---------------------------------------------------------------------------
