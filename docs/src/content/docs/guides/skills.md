@@ -379,16 +379,16 @@ type: skill
 ```
 
 With this manifest, APM deploys package-owned skills under
-`.github/skills/acme-<skill-name>/` (and the equivalent skills directory for
-other targets). The skill remains a direct child of the target `skills/`
-directory so GitHub Copilot, Claude, Codex, and other harnesses can discover it
-without relying on recursive skill lookup. Packages without `namespace` keep
-the legacy flat layout.
+`.agents/skills/acme-<skill-name>/` (and the equivalent skills directory for
+other targets such as `.claude/skills/` for Claude). The skill remains a direct
+child of the target `skills/` directory so GitHub Copilot, Claude, Codex, and
+other harnesses can discover it without relying on recursive skill lookup.
+Packages without `namespace` keep the legacy flat layout.
 
 Before:
 
 ```text
-.github/
+.agents/
 └── skills/
     └── brand-guidelines/
 ```
@@ -396,7 +396,7 @@ Before:
 After:
 
 ```text
-.github/
+.agents/
 └── skills/
     └── acme-brand-guidelines/
 ```
