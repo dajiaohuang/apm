@@ -32,8 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `apm install` no longer skips the credential retry on non-English machines.
   Git localises its diagnostics through gettext, so a translated stderr made an
   authentication failure unrecognisable and private-repo installs failed with
-  misleading network guidance. Every git subprocess APM spawns now runs with
-  `LC_ALL=C` and `LANGUAGE=C`. (by @Naofel-eal, closes #2533)
+  misleading network guidance. Git subprocesses in the authentication retry
+  path now run with `LC_ALL=C` and `LANGUAGE=C`. (by @Naofel-eal, closes #2533)
 
 ### Changed
 
