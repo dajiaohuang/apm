@@ -1610,6 +1610,29 @@ if ! bash scripts/check_marketplace_output_path_authority.sh; then
     violations=$((violations + 1))
 fi
 
+echo "[*] AC34: marketplace metadata-enrichment outcome authority"
+metadata_enrichment_owner="src/apm_cli/marketplace/builder.py"
+metadata_enrichment_class_count=$(grep -rEc --include='*.py' \
+    '^class MetadataEnrichment(Outcome|Result)(\(|:)' src/apm_cli \
+    | awk -F: '{sum += $2} END {print sum + 0}')
+metadata_enrichment_prefetch_defs=$(grep -rEc --include='*.py' \
+    '^[[:space:]]*def _prefetch_metadata\(' src/apm_cli \
+    | awk -F: '{sum += $2} END {print sum + 0}')
+metadata_enrichment_private_consumers=$(
+    grep -rEn --include='*.py' '_prefetch_metadata\(' src/apm_cli \
+        | grep -v "^${metadata_enrichment_owner}:" \
+        || true
+)
+if [ "$metadata_enrichment_class_count" -ne 2 ] \
+    || [ "$metadata_enrichment_prefetch_defs" -ne 1 ] \
+    || ! grep -q '^class MetadataEnrichmentResult(' "$metadata_enrichment_owner" \
+    || ! grep -q '^    def remote_metadata_for_profile(' "$metadata_enrichment_owner" \
+    || [ -n "$metadata_enrichment_private_consumers" ]; then
+    echo "[x] Marketplace metadata certifiability must remain owned by marketplace/builder.py"
+    [ -n "$metadata_enrichment_private_consumers" ] && echo "$metadata_enrichment_private_consumers"
+    violations=$((violations + 1))
+fi
+
 echo "[*] AC33: marketplace structural-diagnostic authority"
 marketplace_structure_owner="src/apm_cli/marketplace/models.py"
 marketplace_structure_validator="src/apm_cli/marketplace/validator.py"

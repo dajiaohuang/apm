@@ -73,6 +73,7 @@ semicolon-delimited, and specific to the file(s) that own the fact.
 | Local marketplace package-version manifest precedence | marketplace/version_check.py (_read_local_version) | `src/apm_cli/marketplace/version_check.py` |
 | applyTo normalization and hidden-tool placement | utils/patterns.py (normalize_apply_to); compilation/context_optimizer.py (ContextOptimizer) | `src/apm_cli/utils/patterns.py`; `src/apm_cli/compilation/context_optimizer.py` |
 | Effective marketplace output path | marketplace/output_profiles.py (resolve_effective_output_path) | `src/apm_cli/marketplace/output_profiles.py` |
+| Marketplace metadata-enrichment outcome and certifiability | marketplace/builder.py (MetadataEnrichmentResult) | `src/apm_cli/marketplace/builder.py` |
 | Bootstrap project-name validation and fallback | core/project_name.py (resolve_bootstrap_project_name) | `src/apm_cli/core/project_name.py` |
 | Marketplace raw-structure diagnostics | marketplace/models.py parser; validator.py consumes them | `src/apm_cli/marketplace/models.py`; `src/apm_cli/marketplace/validator.py` |
 | Agent Plugins v1 contract interpretation, component discovery, and portable manifest authority | agent_plugins/loader.py (load_agent_plugin, _load_apm_configuration) | `src/apm_cli/agent_plugins/loader.py`; `src/apm_cli/agent_plugins/ir.py` |

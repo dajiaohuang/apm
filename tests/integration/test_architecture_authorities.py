@@ -4280,3 +4280,62 @@ def test_bootstrap_project_name_guard_rejects_variable_bypass(tmp_path: Path) ->
 
     assert result.returncode == 1
     assert "ScriptRunner bootstrap name must be the resolver result" in result.stdout
+
+
+def test_marketplace_metadata_certifiability_has_single_owner() -> None:
+    """Metadata outcomes and certification must route through the builder."""
+    root = Path(__file__).parents[2]
+    owner = (root / "src/apm_cli/marketplace/builder.py").read_text(encoding="utf-8")
+    drift = (root / "src/apm_cli/marketplace/drift_check.py").read_text(encoding="utf-8")
+    guard = (root / "scripts/lint-architecture-boundaries.sh").read_text(encoding="utf-8")
+    architecture = (root / ".github/instructions/architecture.instructions.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert owner.count("class MetadataEnrichmentOutcome:") == 1
+    assert owner.count("class MetadataEnrichmentResult(") == 1
+    assert owner.count("def _prefetch_metadata(") == 1
+    assert "def remote_metadata_for_profile(" in owner
+    assert "not remote_metadata.certifiable" in drift
+    assert "AC34: marketplace metadata-enrichment outcome authority" in guard
+    assert "Marketplace metadata certifiability must remain owned by marketplace/builder.py" in guard
+    assert "Marketplace metadata-enrichment outcome and certifiability" in architecture
+
+
+def test_metadata_certifiability_guard_rejects_parallel_owner(tmp_path: Path) -> None:
+    """The architecture gate rejects a duplicate outcome owner outside marketplace."""
+    root = Path(__file__).parents[2]
+    sandbox = tmp_path / "repo"
+    shutil.copytree(
+        root,
+        sandbox,
+        ignore=shutil.ignore_patterns(
+            ".git",
+            ".venv",
+            ".pytest_cache",
+            "__pycache__",
+            "build",
+            "dist",
+            "node_modules",
+        ),
+    )
+    consumer_path = sandbox / "src/apm_cli/core/build_orchestrator.py"
+    consumer_path.write_text(
+        consumer_path.read_text(encoding="utf-8")
+        + "\n\nclass MetadataEnrichmentResult:\n    pass\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ("bash", "scripts/lint-architecture-boundaries.sh"),
+        cwd=sandbox,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+
+    assert result.returncode == 1
+    assert "Marketplace metadata certifiability must remain owned by marketplace/builder.py" in (
+        result.stdout
+    )
