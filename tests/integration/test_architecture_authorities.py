@@ -946,7 +946,10 @@ def test_copilot_agent_projection_guard_rejects_bypasses(
     )
 
     assert result.returncode == 1
-    assert "Copilot agent tool aliases must use AgentIntegrator's single rendered projection" in result.stdout
+    assert (
+        "Copilot agent tool aliases must use AgentIntegrator's single rendered projection"
+        in result.stdout
+    )
 
 
 def test_intellij_mcp_config_path_has_single_owner() -> None:

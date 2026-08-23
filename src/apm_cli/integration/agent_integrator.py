@@ -409,7 +409,9 @@ class AgentIntegrator(BaseIntegrator):
         if not isinstance(tools_node, yaml.SequenceNode):
             return content
         scalar_tokens = [
-            token for token in yaml.scan(fm_match.group(1)) if isinstance(token, yaml.tokens.ScalarToken)
+            token
+            for token in yaml.scan(fm_match.group(1))
+            if isinstance(token, yaml.tokens.ScalarToken)
         ]
         replacements: list[tuple[int, int, str]] = []
         for tool in tools_node.value:
@@ -432,13 +434,15 @@ class AgentIntegrator(BaseIntegrator):
             replacement = GITHUB_AGENT_TOOL_RENAMES[tool.value]
             if scalar_token.style in {"'", '"'}:
                 replacement = f"{scalar_token.style}{replacement}{scalar_token.style}"
-            replacements.append((scalar_token.start_mark.index, scalar_token.end_mark.index, replacement))
+            replacements.append(
+                (scalar_token.start_mark.index, scalar_token.end_mark.index, replacement)
+            )
         if not replacements:
             return content
         frontmatter = fm_match.group(1)
         for start, end, replacement in reversed(replacements):
             frontmatter = f"{frontmatter[:start]}{replacement}{frontmatter[end:]}"
-        return f"{content[:fm_match.start(1)]}{frontmatter}{content[fm_match.end(1):]}"
+        return f"{content[: fm_match.start(1)]}{frontmatter}{content[fm_match.end(1) :]}"
 
     def _render_copilot_agent(
         self,

@@ -173,6 +173,7 @@ def test_opencode_wrapper_package_field_must_use_owner(
         "must not render raw source.name or package_name" in item.message for item in violations
     )
 
+
 def test_missing_owner_call_is_rejected(repo_copy: Path, checker) -> None:
     consumer = repo_copy / "src/apm_cli/integration/opencode_frontmatter.py"
     source = consumer.read_text(encoding="utf-8").replace(

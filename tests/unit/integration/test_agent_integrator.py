@@ -1467,7 +1467,7 @@ class TestGithubAgentToolRenames:
             "notes: |\n"
             "  Keep this block scalar exactly.\n"
             "tools:\n"
-            "  - \"fetch\" # keep quotes and comment\n"
+            '  - "fetch" # keep quotes and comment\n'
             "  - 'askQuestions'\n"
             "  - mcp/custom\n"
             "---\n"
@@ -1480,7 +1480,7 @@ class TestGithubAgentToolRenames:
             "notes: |\n"
             "  Keep this block scalar exactly.\n"
             "tools:\n"
-            "  - \"web/fetch\" # keep quotes and comment\n"
+            '  - "web/fetch" # keep quotes and comment\n'
             "  - 'vscode/askQuestions'\n"
             "  - mcp/custom\n"
             "---\n"
@@ -1492,9 +1492,7 @@ class TestGithubAgentToolRenames:
     def test_renames_preserve_tool_scalar_tags_and_anchors(self):
         """Only the scalar text changes when a legacy name has YAML metadata."""
         content = "---\ntools:\n  - &legacy fetch\n  - !!str askQuestions\n---\nBody.\n"
-        expected = (
-            "---\ntools:\n  - &legacy web/fetch\n  - !!str vscode/askQuestions\n---\nBody.\n"
-        )
+        expected = "---\ntools:\n  - &legacy web/fetch\n  - !!str vscode/askQuestions\n---\nBody.\n"
 
         assert AgentIntegrator._apply_github_agent_tool_renames(content) == expected
 
