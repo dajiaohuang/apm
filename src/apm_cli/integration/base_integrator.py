@@ -374,6 +374,28 @@ class BaseIntegrator:
             return True
         return False
 
+    @staticmethod
+    def try_adopt_rendered(
+        target_path: Path,
+        rendered: str,
+        target_paths: list,
+    ) -> bool:
+        """Adopt *target_path* when it matches a pre-rendered LF artifact.
+
+        Target-specific integrators that transform source content before writing
+        must compare the target to that same transformed artifact, rather than
+        to the raw source file.
+        """
+        if target_path.is_symlink():
+            return False
+        try:
+            if target_path.read_bytes() != normalize_crlf_to_lf(rendered).encode("utf-8"):
+                return False
+        except OSError:
+            return False
+        target_paths.append(target_path)
+        return True
+
     def _check_adopt_or_skip(
         self,
         target_path: Path,

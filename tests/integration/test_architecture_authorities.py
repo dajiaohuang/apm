@@ -898,6 +898,57 @@ def test_ado_policy_coordinate_guard_rejects_literal_bypass(tmp_path: Path) -> N
     assert "ADO policy coordinate must come from discovery.py constants" in result.stdout
 
 
+@pytest.mark.parametrize(
+    ("needle", "replacement"),
+    [
+        (
+            "rendered, links_resolved = self._render_copilot_agent(source_file, target_path)",
+            "rendered, links_resolved = self.resolve_links('', source_file, target_path)",
+        ),
+        (
+            "\n\n# Kiro capability tags approved",
+            "\n\nGITHUB_AGENT_TOOL_RENAMES = {}\n\n# Kiro capability tags approved",
+        ),
+    ],
+)
+def test_copilot_agent_projection_guard_rejects_bypasses(
+    tmp_path: Path, needle: str, replacement: str
+) -> None:
+    """AC2 keeps Copilot alias mapping and producer routing centralized."""
+    root = Path(__file__).parents[2]
+    sandbox = tmp_path / "repo"
+    shutil.copytree(
+        root,
+        sandbox,
+        ignore=shutil.ignore_patterns(
+            ".git",
+            ".venv",
+            ".pytest_cache",
+            "__pycache__",
+            "build",
+            "dist",
+            "node_modules",
+        ),
+    )
+    owner = sandbox / "src/apm_cli/integration/agent_integrator.py"
+    owner.write_text(
+        owner.read_text(encoding="utf-8").replace(needle, replacement, 1),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ("bash", "scripts/lint-architecture-boundaries.sh"),
+        cwd=sandbox,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+
+    assert result.returncode == 1
+    assert "Copilot agent tool aliases must use AgentIntegrator's single rendered projection" in result.stdout
+
+
 def test_intellij_mcp_config_path_has_single_owner() -> None:
     """JetBrains Copilot path selection must stay in its client adapter."""
     root = Path(__file__).parents[2]

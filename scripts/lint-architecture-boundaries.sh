@@ -174,9 +174,22 @@ echo "[*] AC2: validate-before-mutate boundaries"
 generated_bundle_writer_output=$(python3 scripts/check_generated_bundle_text_writers.py 2>&1)
 generated_bundle_writer_status=$?
 if [ "$generated_bundle_writer_status" -ne 0 ]; then
-    echo "[x] Generated bundle metadata writes must use deterministic LF"
-    echo "$generated_bundle_writer_output"
-    violations=$((violations + 1))
+   echo "[x] Generated bundle metadata writes must use deterministic LF"
+   echo "$generated_bundle_writer_output"
+   violations=$((violations + 1))
+fi
+copilot_agent_owner="src/apm_cli/integration/agent_integrator.py"
+copilot_agent_projection_count=$(grep -Ec \
+   '^    def _render_copilot_agent\(' "$copilot_agent_owner" || true)
+copilot_agent_alias_map_count=$(grep -REh --include='*.py' \
+   '^GITHUB_AGENT_TOOL_RENAMES[[:space:]]*[:=]' src/apm_cli | wc -l | tr -d ' ')
+copilot_agent_projection_calls=$(grep -Fc '_render_copilot_agent(' "$copilot_agent_owner" || true)
+if [ "$copilot_agent_projection_count" -ne 1 ] \
+   || [ "$copilot_agent_alias_map_count" -ne 1 ] \
+   || [ "$copilot_agent_projection_calls" -ne 3 ] \
+   || grep -q '_copy_github_agent' "$copilot_agent_owner"; then
+   echo "[x] Copilot agent tool aliases must use AgentIntegrator's single rendered projection"
+   violations=$((violations + 1))
 fi
 compiled_write_hits=$(
     grep -rEn \

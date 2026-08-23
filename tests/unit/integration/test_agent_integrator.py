@@ -1391,11 +1391,18 @@ class TestGithubAgentToolRenames:
 
     def test_unknown_tool_names_pass_through_unchanged(self):
         """Tool names not in the rename map must be preserved verbatim."""
-        content = "---\ndescription: A\ntools:\n  - myCustomTool\n  - anotherTool\n---\nBody.\n"
+        content = (
+            "---\ndescription: A\ntools:\n"
+            "  - myCustomTool\n"
+            "  - mcp/custom-server\n"
+            "  - anotherTool\n"
+            "---\nBody.\n"
+        )
 
         result = AgentIntegrator._apply_github_agent_tool_renames(content)
 
         assert "myCustomTool" in result
+        assert "mcp/custom-server" in result
         assert "anotherTool" in result
 
     def test_already_namespaced_names_pass_through_unchanged(self):
@@ -1438,6 +1445,14 @@ class TestGithubAgentToolRenames:
     def test_tools_not_a_list_returns_content_unchanged(self):
         """Non-list tools value (e.g. string) is returned verbatim."""
         content = "---\ndescription: Agent\ntools: all\n---\nBody.\n"
+
+        result = AgentIntegrator._apply_github_agent_tool_renames(content)
+
+        assert result == content
+
+    def test_malformed_frontmatter_returns_content_unchanged(self):
+        """Malformed frontmatter is not rewritten or repaired."""
+        content = "---\ndescription: Agent\ntools: [fetch\n---\nBody.\n"
 
         result = AgentIntegrator._apply_github_agent_tool_renames(content)
 
@@ -1609,3 +1624,69 @@ class TestGithubAgentToolRenames:
         # Non-string mapping entry must survive -- it is not stringified.
         assert "name: customTool" in result
         assert "description: My tool" in result
+
+    def test_modern_copilot_path_adopts_rendered_projection_without_rewriting(self):
+        """A second Copilot install adopts its already transformed bytes."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        package_dir = self.root / "package"
+        agents_dir = package_dir / ".apm" / "agents"
+        agents_dir.mkdir(parents=True)
+        source = agents_dir / "reviewer.agent.md"
+        source_content = "---\ndescription: Reviewer\ntools: [fetch]\n---\nReview.\n"
+        source.write_text(source_content, encoding="utf-8")
+        package_info = self._create_package_info(package_dir)
+        integrator = AgentIntegrator()
+
+        first = integrator.integrate_agents_for_target(
+            KNOWN_TARGETS["copilot"], package_info, self.root
+        )
+        target = self.root / ".github" / "agents" / source.name
+        deployed_bytes = target.read_bytes()
+        deployed_mtime = target.stat().st_mtime_ns
+
+        second = integrator.integrate_agents_for_target(
+            KNOWN_TARGETS["copilot"], package_info, self.root
+        )
+
+        assert first.files_integrated == 1
+        assert second.files_integrated == 0
+        assert second.files_adopted == 1
+        assert source.read_text(encoding="utf-8") == source_content
+        assert target.read_bytes() == deployed_bytes
+        assert target.stat().st_mtime_ns == deployed_mtime
+        assert b"web/fetch" in deployed_bytes
+
+    def test_legacy_copilot_path_isolated_and_adopts_rendered_projection(self):
+        """Only Copilot rewrites aliases when the legacy multi-target path runs."""
+        package_dir = self.root / "package"
+        agents_dir = package_dir / ".apm" / "agents"
+        agents_dir.mkdir(parents=True)
+        source = agents_dir / "reviewer.agent.md"
+        source_content = "---\ndescription: Reviewer\ntools: [askQuestions, fetch]\n---\nReview.\n"
+        source.write_text(source_content, encoding="utf-8")
+        (self.root / ".claude").mkdir()
+        (self.root / ".cursor").mkdir()
+        package_info = self._create_package_info(package_dir)
+        integrator = AgentIntegrator()
+
+        first = integrator.integrate_package_agents(package_info, self.root)
+        copilot = self.root / ".github" / "agents" / source.name
+        deployed_bytes = copilot.read_bytes()
+        deployed_mtime = copilot.stat().st_mtime_ns
+        second = integrator.integrate_package_agents(package_info, self.root)
+
+        assert first.files_integrated == 1
+        assert second.files_integrated == 0
+        assert second.files_adopted == 3
+        assert source.read_text(encoding="utf-8") == source_content
+        assert copilot.read_bytes() == deployed_bytes
+        assert copilot.stat().st_mtime_ns == deployed_mtime
+        assert "vscode/askQuestions" in copilot.read_text(encoding="utf-8")
+        assert "web/fetch" in copilot.read_text(encoding="utf-8")
+        assert (self.root / ".claude" / "agents" / "reviewer.md").read_text(
+            encoding="utf-8"
+        ) == source_content
+        assert (self.root / ".cursor" / "agents" / "reviewer.md").read_text(
+            encoding="utf-8"
+        ) == source_content

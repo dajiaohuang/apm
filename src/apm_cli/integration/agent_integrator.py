@@ -231,12 +231,30 @@ class AgentIntegrator(BaseIntegrator):
                 target_paths.append(target_path)
                 continue
 
-            # Non-kiro path: eager mkdir (existing behavior preserved).
+            rel_path = portable_relpath(target_path, project_root)
+            if mapping.format_id == "github_agent":
+                rendered, links_resolved = self._render_copilot_agent(source_file, target_path)
+                if self.try_adopt_rendered(target_path, rendered, target_paths):
+                    files_adopted += 1
+                    continue
+                if self.check_collision(
+                    target_path, rel_path, managed_files, force, diagnostics=diagnostics
+                ):
+                    files_skipped += 1
+                    continue
+                if not agents_dir_created:
+                    agents_dir.mkdir(parents=True, exist_ok=True)
+                    agents_dir_created = True
+                write_text_lf(target_path, rendered)
+                total_links_resolved += links_resolved
+                files_integrated += 1
+                target_paths.append(target_path)
+                continue
+
+            # Non-Kiro/Copilot paths retain the source-file adoption contract.
             if not agents_dir_created:
                 agents_dir.mkdir(parents=True, exist_ok=True)
                 agents_dir_created = True
-
-            rel_path = portable_relpath(target_path, project_root)
 
             skip, adopted = self._check_adopt_or_skip(
                 target_path, source_file, rel_path, managed_files, force, diagnostics, target_paths
@@ -256,13 +274,6 @@ class AgentIntegrator(BaseIntegrator):
                     package_name=package_info.package.name,
                 )
                 links_resolved = 0
-            elif mapping.format_id == "github_agent":
-                links_resolved = self._copy_github_agent(
-                    source_file,
-                    target_path,
-                    diagnostics=diagnostics,
-                    package_name=package_info.package.name,
-                )
             else:
                 if mapping.format_id == "opencode_agent":
                     self._warn_opencode_frontmatter(
@@ -406,49 +417,29 @@ class AgentIntegrator(BaseIntegrator):
         fm_text = yaml_to_str(fm)
         return f"---\n{fm_text}---\n{body}"
 
-    def _copy_github_agent(
+    def _render_copilot_agent(
         self,
         source: Path,
         target: Path,
-        diagnostics: DiagnosticCollector | None = None,
-        package_name: str = "",
-    ) -> int:
-        """Copy a github_agent file, rewriting deprecated tool names.
+    ) -> tuple[str, int]:
+        """Render the sole Copilot projection for an agent source file.
 
-        Delegates the read/resolve/write pipeline to :meth:`copy_agent` via
-        its ``pre_transform`` hook so that security checks (symlink guard) and
-        link resolution live in exactly one place.
-
-        When ``diagnostics`` is supplied and renames occur, an info-level
-        diagnostic is emitted naming the file and the count of rewrites.
+        The returned artifact is used for both adoption comparison and writing.
+        This keeps a transformed Copilot deployment idempotent while leaving
+        package source bytes and all other target projections untouched.
 
         Args:
             source: Source ``.agent.md`` file path.
             target: Destination path under ``.github/agents/``.
-            diagnostics: Optional collector for user-visible messages.
-            package_name: Package name for diagnostic context.
 
         Returns:
-            int: Number of context links resolved.
+            The rendered content and number of resolved context links.
         """
-        rename_count: list[int] = [0]
-
-        def _transform(content: str) -> str:
-            renamed = self._apply_github_agent_tool_renames(content)
-            if renamed is not content:
-                rename_count[0] = sum(1 for old in GITHUB_AGENT_TOOL_RENAMES if old in content)
-            return renamed
-
-        links_resolved = self.copy_agent(source, target, pre_transform=_transform)
-        if rename_count[0] and diagnostics is not None:
-            diagnostics.info(
-                message=(
-                    f"{printable_ascii_text(source.name)}: rewrote {rename_count[0]} deprecated"
-                    f" VSCode tool name(s) to namespaced form"
-                ),
-                package=printable_ascii_text(package_name),
-            )
-        return links_resolved
+        if source.is_symlink():
+            raise ValueError(f"Refusing to read symlink source: {source}")
+        content = source.read_text(encoding="utf-8")
+        content = self._apply_github_agent_tool_renames(content)
+        return self.resolve_links(content, source, target)
 
     # ------------------------------------------------------------------
     # OpenCode validate-and-warn (Phase 1 of #581)
@@ -840,9 +831,8 @@ class AgentIntegrator(BaseIntegrator):
                 continue
             rel_path = portable_relpath(target_path, project_root)
 
-            if self.try_adopt_identical(
-                target_path, source_file, target_paths, lf_normalized_deploy=True
-            ):
+            rendered, links_resolved = self._render_copilot_agent(source_file, target_path)
+            if self.try_adopt_rendered(target_path, rendered, target_paths):
                 files_adopted += 1
             else:
                 if self.check_collision(
@@ -850,12 +840,7 @@ class AgentIntegrator(BaseIntegrator):
                 ):
                     files_skipped += 1
                     continue
-                links_resolved = self._copy_github_agent(
-                    source_file,
-                    target_path,
-                    diagnostics=diagnostics,
-                    package_name=package_info.package.name,
-                )
+                write_text_lf(target_path, rendered)
                 total_links_resolved += links_resolved
                 files_integrated += 1
                 target_paths.append(target_path)

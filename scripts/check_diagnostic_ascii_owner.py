@@ -29,7 +29,6 @@ AGENT_DIAGNOSTIC_FUNCTIONS = {
     "AgentIntegrator._warn_codex_unverified_scope": True,
     "AgentIntegrator._warn_codex_tools_dropped": True,
     "AgentIntegrator._warn_opencode_frontmatter": False,
-    "AgentIntegrator._copy_github_agent": False,
 }
 ALLOWED_IDENTITY_DELEGATES = {
     "AgentIntegrator._warn_opencode_frontmatter": {"validate_opencode_frontmatter"},
