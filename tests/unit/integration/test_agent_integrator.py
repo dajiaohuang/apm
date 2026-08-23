@@ -1496,6 +1496,13 @@ class TestGithubAgentToolRenames:
 
         assert AgentIntegrator._apply_github_agent_tool_renames(content) == expected
 
+    def test_renames_an_anchored_tool_once_when_referenced_by_an_alias(self):
+        """A YAML alias must not schedule a second replacement for its anchor."""
+        content = "---\ntools:\n  - &legacy fetch\n  - *legacy\n---\nBody.\n"
+        expected = "---\ntools:\n  - &legacy web/fetch\n  - *legacy\n---\nBody.\n"
+
+        assert AgentIntegrator._apply_github_agent_tool_renames(content) == expected
+
     def test_mixed_old_and_unknown_tools_renames_only_known(self):
         """Only known old names are renamed; unrecognised names are kept."""
         content = (
@@ -1617,7 +1624,23 @@ class TestGithubAgentToolRenames:
         package_dir = self.root / "package"
         agents_dir = package_dir / ".apm" / "agents"
         agents_dir.mkdir(parents=True)
-        tools_list = "\n".join(f"  - {t}" for t in GITHUB_AGENT_TOOL_RENAMES)
+        legacy_tools = (
+            "askQuestions",
+            "runInTerminal",
+            "getTerminalOutput",
+            "createFile",
+            "fetch",
+            "listDirectory",
+        )
+        expected_tools = (
+            "vscode/askQuestions",
+            "execute/runInTerminal",
+            "execute/getTerminalOutput",
+            "edit/createFile",
+            "web/fetch",
+            "search/listDirectory",
+        )
+        tools_list = "\n".join(f"  - {tool}" for tool in legacy_tools)
         (agents_dir / "all-tools.agent.md").write_text(
             f"---\ndescription: Full tool set\ntools:\n{tools_list}\n---\nDo work.\n",
             encoding="utf-8",
@@ -1632,11 +1655,11 @@ class TestGithubAgentToolRenames:
         deployed = (self.root / ".github" / "agents" / "all-tools.agent.md").read_text(
             encoding="utf-8"
         )
-        for old, new in GITHUB_AGENT_TOOL_RENAMES.items():
-            assert f"- {old}" not in deployed, (
-                f"Old YAML item '- {old}' still present in deployed file"
+        for legacy_tool, expected_tool in zip(legacy_tools, expected_tools, strict=True):
+            assert f"- {legacy_tool}" not in deployed, (
+                f"Old YAML item '- {legacy_tool}' still present in deployed file"
             )
-            assert new in deployed, f"New name {new!r} missing in deployed file"
+            assert expected_tool in deployed, f"New name {expected_tool!r} missing in deployed file"
 
     def test_non_string_tool_entries_pass_through_unchanged(self):
         """Non-string entries in the tools list are preserved without coercion.

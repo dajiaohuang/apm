@@ -414,6 +414,7 @@ class AgentIntegrator(BaseIntegrator):
             if isinstance(token, yaml.tokens.ScalarToken)
         ]
         replacements: list[tuple[int, int, str]] = []
+        handled_ranges: set[tuple[int, int]] = set()
         for tool in tools_node.value:
             if not isinstance(tool, yaml.ScalarNode) or tool.value not in GITHUB_AGENT_TOOL_RENAMES:
                 continue
@@ -431,12 +432,14 @@ class AgentIntegrator(BaseIntegrator):
             )
             if scalar_token is None:
                 continue
+            scalar_range = (scalar_token.start_mark.index, scalar_token.end_mark.index)
+            if scalar_range in handled_ranges:
+                continue
+            handled_ranges.add(scalar_range)
             replacement = GITHUB_AGENT_TOOL_RENAMES[tool.value]
             if scalar_token.style in {"'", '"'}:
                 replacement = f"{scalar_token.style}{replacement}{scalar_token.style}"
-            replacements.append(
-                (scalar_token.start_mark.index, scalar_token.end_mark.index, replacement)
-            )
+            replacements.append((*scalar_range, replacement))
         if not replacements:
             return content
         frontmatter = fm_match.group(1)

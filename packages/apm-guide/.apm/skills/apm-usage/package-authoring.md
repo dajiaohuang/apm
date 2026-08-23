@@ -438,7 +438,7 @@ For `target: copilot`, APM preserves the package source and rewrites only the
 deployed `.github/agents/` copy of these legacy built-in tool names:
 `askQuestions`, `runInTerminal`, `getTerminalOutput`, `createFile`, `fetch`,
 and `listDirectory`. Use the namespaced forms in new packages. Already
-namespaced, custom, and MCP tool names pass through unchanged.
+namespaced and non-matching custom or MCP tool names pass through unchanged.
 
 #### OpenCode target: frontmatter constraints
 
