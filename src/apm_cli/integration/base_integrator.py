@@ -386,12 +386,12 @@ class BaseIntegrator:
         must compare the target to that same transformed artifact, rather than
         to the raw source file.
         """
-        if target_path.is_symlink():
-            return False
         try:
-            if target_path.read_bytes() != normalize_crlf_to_lf(rendered).encode("utf-8"):
+            if target_path.is_symlink():
                 return False
-        except OSError:
+            if _read_bytes_no_follow(target_path) != normalize_crlf_to_lf(rendered).encode("utf-8"):
+                return False
+        except (OSError, _SymlinkRaceError):
             return False
         target_paths.append(target_path)
         return True

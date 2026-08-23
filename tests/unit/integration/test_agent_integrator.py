@@ -1458,6 +1458,46 @@ class TestGithubAgentToolRenames:
 
         assert result == content
 
+    def test_renames_preserve_unrelated_frontmatter_bytes(self):
+        """The Copilot projection changes only exact legacy tool scalar ranges."""
+        content = (
+            "---\n"
+            "description: yes # YAML 1.1 boolean-like text\n"
+            "preserve: 001\n"
+            "notes: |\n"
+            "  Keep this block scalar exactly.\n"
+            "tools:\n"
+            "  - \"fetch\" # keep quotes and comment\n"
+            "  - 'askQuestions'\n"
+            "  - mcp/custom\n"
+            "---\n"
+            "Body.\n"
+        )
+        expected = (
+            "---\n"
+            "description: yes # YAML 1.1 boolean-like text\n"
+            "preserve: 001\n"
+            "notes: |\n"
+            "  Keep this block scalar exactly.\n"
+            "tools:\n"
+            "  - \"web/fetch\" # keep quotes and comment\n"
+            "  - 'vscode/askQuestions'\n"
+            "  - mcp/custom\n"
+            "---\n"
+            "Body.\n"
+        )
+
+        assert AgentIntegrator._apply_github_agent_tool_renames(content) == expected
+
+    def test_renames_preserve_tool_scalar_tags_and_anchors(self):
+        """Only the scalar text changes when a legacy name has YAML metadata."""
+        content = "---\ntools:\n  - &legacy fetch\n  - !!str askQuestions\n---\nBody.\n"
+        expected = (
+            "---\ntools:\n  - &legacy web/fetch\n  - !!str vscode/askQuestions\n---\nBody.\n"
+        )
+
+        assert AgentIntegrator._apply_github_agent_tool_renames(content) == expected
+
     def test_mixed_old_and_unknown_tools_renames_only_known(self):
         """Only known old names are renamed; unrecognised names are kept."""
         content = (

@@ -223,6 +223,17 @@ class TestTryAdoptIdenticalDeployMode:
         )
         assert adopted == [target]
 
+    def test_rendered_adoption_rejects_a_symlink_target(self, tmp_path: Path) -> None:
+        """Rendered adoption uses the same no-follow protection as source adoption."""
+        target = tmp_path / "target"
+        decoy = tmp_path / "decoy"
+        decoy.write_text("# Agent\n", encoding="utf-8")
+        target.symlink_to(decoy)
+        adopted: list[Path] = []
+
+        assert BaseIntegrator.try_adopt_rendered(target, "# Agent\n", adopted) is False
+        assert adopted == []
+
 
 # ---------------------------------------------------------------------------
 # Instruction integrator -- the user's reproducer (zava-storefront)

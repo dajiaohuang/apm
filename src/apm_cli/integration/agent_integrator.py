@@ -378,10 +378,9 @@ class AgentIntegrator(BaseIntegrator):
 
         Applies GITHUB_AGENT_TOOL_RENAMES to every string entry in the YAML
         frontmatter ``tools:`` list.  Non-string entries (mappings, sequences,
-        etc.) are preserved as-is without coercion.  Other frontmatter field
-        *values* are semantically preserved, but their serialisation formatting
-        (quoting style, key order) may change due to the YAML roundtrip.  The
-        markdown body is byte-for-byte unchanged.  Returns the original
+        etc.) are preserved as-is without coercion. Only the exact scalar
+        ranges for renamed aliases change; all other frontmatter and the
+        markdown body remain byte-for-byte unchanged. Returns the original
         *content* unchanged when:
 
         - the file has no YAML frontmatter
@@ -394,28 +393,52 @@ class AgentIntegrator(BaseIntegrator):
         if not fm_match:
             return content
         try:
-            fm = load_yaml_str(fm_match.group(1)) or {}
+            document = yaml.compose(fm_match.group(1))
         except yaml.YAMLError:
             return content
-        if not isinstance(fm, dict):
+        if not isinstance(document, yaml.MappingNode):
             return content
-        tools_raw = fm.get("tools")
-        if not isinstance(tools_raw, list):
+        tools_node = next(
+            (
+                value
+                for key, value in document.value
+                if isinstance(key, yaml.ScalarNode) and key.value == "tools"
+            ),
+            None,
+        )
+        if not isinstance(tools_node, yaml.SequenceNode):
             return content
-        any_renamed = False
-        renamed = []
-        for t in tools_raw:
-            if isinstance(t, str) and t in GITHUB_AGENT_TOOL_RENAMES:
-                renamed.append(GITHUB_AGENT_TOOL_RENAMES[t])
-                any_renamed = True
-            else:
-                renamed.append(t)
-        if not any_renamed:
+        scalar_tokens = [
+            token for token in yaml.scan(fm_match.group(1)) if isinstance(token, yaml.tokens.ScalarToken)
+        ]
+        replacements: list[tuple[int, int, str]] = []
+        for tool in tools_node.value:
+            if not isinstance(tool, yaml.ScalarNode) or tool.value not in GITHUB_AGENT_TOOL_RENAMES:
+                continue
+            scalar_token = next(
+                (
+                    token
+                    for token in scalar_tokens
+                    if (
+                        token.value == tool.value
+                        and tool.start_mark.index <= token.start_mark.index
+                        and token.end_mark.index <= tool.end_mark.index
+                    )
+                ),
+                None,
+            )
+            if scalar_token is None:
+                continue
+            replacement = GITHUB_AGENT_TOOL_RENAMES[tool.value]
+            if scalar_token.style in {"'", '"'}:
+                replacement = f"{scalar_token.style}{replacement}{scalar_token.style}"
+            replacements.append((scalar_token.start_mark.index, scalar_token.end_mark.index, replacement))
+        if not replacements:
             return content
-        fm["tools"] = renamed
-        body = content[fm_match.end() :]
-        fm_text = yaml_to_str(fm)
-        return f"---\n{fm_text}---\n{body}"
+        frontmatter = fm_match.group(1)
+        for start, end, replacement in reversed(replacements):
+            frontmatter = f"{frontmatter[:start]}{replacement}{frontmatter[end:]}"
+        return f"{content[:fm_match.start(1)]}{frontmatter}{content[fm_match.end(1):]}"
 
     def _render_copilot_agent(
         self,
