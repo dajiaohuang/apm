@@ -72,14 +72,19 @@ class ApmIgnoreSpec:
                     continue
                 ignore_file = current / APM_IGNORE_FILENAME
                 if ignore_file.is_symlink() or not ignore_file.is_file():
-                    continue
+                    raise ApmIgnoreError(
+                        f"Cannot load {APM_IGNORE_FILENAME} at {ignore_file}: "
+                        "must be a regular file, not a symlink or directory"
+                    )
                 rel_prefix = portable_relpath(current, root)
                 if rel_prefix in {".", ""} or rel_prefix == current.as_posix():
                     rel_prefix = ""
                 try:
                     text = ignore_file.read_text(encoding="utf-8")
-                except OSError:
-                    continue
+                except (OSError, UnicodeError) as exc:
+                    raise ApmIgnoreError(
+                        f"Cannot read {APM_IGNORE_FILENAME} at {ignore_file}: {exc}"
+                    ) from exc
                 layers.append(
                     _IgnoreLayer(
                         directory=current,

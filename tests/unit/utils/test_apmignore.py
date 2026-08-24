@@ -107,6 +107,22 @@ def test_nested_apmignore_last_match_wins(tmp_path: Path) -> None:
     assert spec.is_ignored(local) is False
 
 
+def test_unreadable_apmignore_fails_closed(tmp_path: Path, monkeypatch) -> None:
+    _write(tmp_path, "SKILL.md", "# skill")
+    ignore_path = _write(tmp_path, ".apmignore", "evals/\n")
+    original = Path.read_text
+
+    def _blocked(self, *args, **kwargs):
+        if self.name == ".apmignore":
+            raise OSError("permission denied")
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", _blocked)
+    with pytest.raises(ApmIgnoreError, match="Cannot read"):
+        ApmIgnoreSpec.load(tmp_path)
+    assert ignore_path.exists()
+
+
 def test_cannot_ignore_skill_md(tmp_path: Path) -> None:
     _write(tmp_path, "SKILL.md", "# skill")
     _write(tmp_path, ".apmignore", "SKILL.md\n")
