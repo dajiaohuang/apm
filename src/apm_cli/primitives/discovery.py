@@ -92,7 +92,10 @@ def clear_discovery_cache() -> None:
     from earlier runs (tests, REPL, long-lived processes) cannot leak
     into the next install's discovery results.
     """
+    from ..utils.apmignore import clear_apmignore_cache
+
     _DISCOVERY_CACHE.clear()
+    clear_apmignore_cache()
 
 
 def _discovery_cache_key(
@@ -409,7 +412,11 @@ def _matches_any_pattern(rel_path: str, patterns: list[str]) -> bool:
 
 
 def _scan_patterns(
-    base_dir: Path, patterns: dict[str, list[str]], collection: PrimitiveCollection, source: str
+    base_dir: Path,
+    patterns: dict[str, list[str]],
+    collection: PrimitiveCollection,
+    source: str,
+    ignore: object | None = None,
 ) -> None:
     """Walk *base_dir* once, match files against all patterns, parse and collect.
 
@@ -431,13 +438,20 @@ def _scan_patterns(
         all_patterns.extend(type_patterns)
 
     base_str = str(base_dir)
-    for dirpath, _dirnames, filenames in os.walk(base_str, followlinks=False):
+    for dirpath, dirnames, filenames in os.walk(base_str, followlinks=False):
+        if ignore is not None:
+            current = Path(dirpath)
+            dirnames[:] = [
+                name for name in dirnames if not ignore.is_ignored(current / name, is_dir=True)
+            ]
         for filename in filenames:
             full_path = os.path.join(dirpath, filename)
             rel_path = os.path.relpath(full_path, base_str).replace(os.sep, "/")
             if not _matches_any_pattern(rel_path, all_patterns):
                 continue
             file_path = Path(full_path)
+            if ignore is not None and ignore.is_ignored(file_path, is_dir=False):
+                continue
             if file_path.is_file() and _is_readable(file_path):
                 try:
                     primitive = parse_primitive_file(file_path, source=source)
@@ -456,20 +470,30 @@ def scan_directory_with_source(
         collection (PrimitiveCollection): Collection to add primitives to.
         source (str): Source identifier for discovered primitives.
     """
+    from ..utils.apmignore import ApmIgnoreSpec
+
+    ignore = ApmIgnoreSpec.load(directory)
+
     # Scan .apm directory within the dependency
     apm_dir = directory / ".apm"
     if apm_dir.exists():
-        _scan_patterns(apm_dir, DEPENDENCY_PRIMITIVE_PATTERNS, collection, source)
+        _scan_patterns(apm_dir, DEPENDENCY_PRIMITIVE_PATTERNS, collection, source, ignore=ignore)
 
     # Also scan .github directory — some packages store primitives there instead of (or
     # in addition to) .apm/.  Without this, dependency instructions in .github/instructions/
     # are silently skipped in the normal compile path (issue #631).
     github_dir = directory / ".github"
     if github_dir.exists():
-        _scan_patterns(github_dir, DEPENDENCY_GITHUB_PRIMITIVE_PATTERNS, collection, source)
+        _scan_patterns(
+            github_dir,
+            DEPENDENCY_GITHUB_PRIMITIVE_PATTERNS,
+            collection,
+            source,
+            ignore=ignore,
+        )
 
     # Check for SKILL.md in the dependency root
-    _discover_skill_in_directory(directory, collection, source)
+    _discover_skill_in_directory(directory, collection, source, ignore=ignore)
 
 
 def _discover_local_skill(
@@ -489,6 +513,11 @@ def _discover_local_skill(
         if should_exclude(skill_path, Path(base_dir), exclude_patterns):
             logger.debug("Excluded by pattern: %s", skill_path)
             return
+        from ..utils.apmignore import ApmIgnoreSpec
+
+        if ApmIgnoreSpec.load(Path(base_dir)).is_ignored(skill_path, is_dir=False):
+            logger.debug("Excluded by package ignore spec: %s", skill_path)
+            return
         try:
             skill = parse_skill_file(skill_path, source="local")
             collection.add_primitive(skill)
@@ -497,7 +526,10 @@ def _discover_local_skill(
 
 
 def _discover_skill_in_directory(
-    directory: Path, collection: PrimitiveCollection, source: str
+    directory: Path,
+    collection: PrimitiveCollection,
+    source: str,
+    ignore: object | None = None,
 ) -> None:
     """Discover SKILL.md in a package directory.
 
@@ -505,8 +537,11 @@ def _discover_skill_in_directory(
         directory (Path): Package directory to check.
         collection (PrimitiveCollection): Collection to add skill to.
         source (str): Source identifier for the skill.
+        ignore: Optional package ignore spec.
     """
     skill_path = directory / "SKILL.md"
+    if ignore is not None and ignore.is_ignored(skill_path, is_dir=False):
+        return
     if skill_path.exists() and _is_readable(skill_path):
         try:
             skill = parse_skill_file(skill_path, source=source)
@@ -606,6 +641,9 @@ def find_primitive_files(
 
     started = time.perf_counter()
     base_path = Path(base_dir).resolve()
+    from ..utils.apmignore import ApmIgnoreSpec
+
+    ignore = ApmIgnoreSpec.load(base_path)
     base_str = str(base_path)
     base_prefix_len = len(base_str) + 1  # +1 for the trailing separator
     sep = os.sep
@@ -623,16 +661,16 @@ def find_primitive_files(
         # Prune excluded directories BEFORE descending. ``DEFAULT_SKIP_DIRS``
         # check is a frozenset lookup; the ``_exclude_matches_dir`` call
         # only fires when the caller actually supplied exclude patterns.
-        if exclude_patterns:
-            current = Path(root)
-            dirs[:] = sorted(
-                d
-                for d in dirs
-                if d not in DEFAULT_SKIP_DIRS
-                and not _exclude_matches_dir(current / d, base_path, exclude_patterns)
+        current = Path(root)
+        dirs[:] = sorted(
+            d
+            for d in dirs
+            if d not in DEFAULT_SKIP_DIRS
+            and not (
+                exclude_patterns and _exclude_matches_dir(current / d, base_path, exclude_patterns)
             )
-        else:
-            dirs[:] = sorted(d for d in dirs if d not in DEFAULT_SKIP_DIRS)
+            and not ignore.is_ignored(current / d, is_dir=True)
+        )
 
         # Compute the relative directory once per ``os.walk`` step using
         # string slicing on the already-resolved base path. This avoids
@@ -669,6 +707,9 @@ def find_primitive_files(
             # individual files even when their parent directory is included.
             if exclude_patterns and should_exclude(file_path, base_path, exclude_patterns):
                 logger.debug("Excluded by pattern: %s", file_path)
+                continue
+            if ignore.is_ignored(file_path, is_dir=False):
+                logger.debug("Excluded by package ignore spec: %s", file_path)
                 continue
             all_files.append(file_path)
 

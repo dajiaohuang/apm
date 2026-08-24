@@ -4134,3 +4134,17 @@ def test_bootstrap_project_name_guard_rejects_variable_bypass(tmp_path: Path) ->
 
     assert result.returncode == 1
     assert "ScriptRunner bootstrap name must be the resolver result" in result.stdout
+
+
+def test_apmignore_membership_has_single_owner() -> None:
+    """Package ignore membership must stay owned by utils/apmignore.py."""
+    root = Path(__file__).parents[2]
+    owner = (root / "src/apm_cli/utils/apmignore.py").read_text(encoding="utf-8")
+    guard = (root / "scripts/lint-architecture-boundaries.sh").read_text(encoding="utf-8")
+    architecture = (root / ".github/instructions/architecture.instructions.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "class ApmIgnoreSpec:" in owner
+    assert "AC35: .apmignore membership authority" in guard
+    assert "| Package ship/deploy/compile path membership from `.apmignore` |" in architecture

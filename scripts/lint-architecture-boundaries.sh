@@ -1707,6 +1707,29 @@ if [ "$mcp_runtime_variable_owner_defs" -ne 1 ] \
     violations=$((violations + 1))
 fi
 
+echo "[*] AC35: .apmignore membership authority"
+apmignore_owner="src/apm_cli/utils/apmignore.py"
+apmignore_literal_hits=$(
+    grep -rEn --include='*.py' "['\"]\\.apmignore['\"]" src/apm_cli \
+        | grep -v "^${apmignore_owner}:" \
+        | grep -v '^src/apm_cli/constants.py:' \
+        | grep -v 'architecture-authority-exempt:' \
+        || true
+)
+apmignore_pathspec_hits=$(
+    grep -rEn --include='*.py' 'GitIgnoreSpec|from pathspec|import pathspec' src/apm_cli \
+        | grep -v "^${apmignore_owner}:" \
+        | grep -v 'architecture-authority-exempt:' \
+        || true
+)
+if [ -n "$apmignore_literal_hits" ] || [ -n "$apmignore_pathspec_hits" ] \
+    || ! grep -q '^class ApmIgnoreSpec:' "$apmignore_owner"; then
+    echo "[x] .apmignore membership must route through utils/apmignore.py"
+    [ -n "$apmignore_literal_hits" ] && echo "$apmignore_literal_hits"
+    [ -n "$apmignore_pathspec_hits" ] && echo "$apmignore_pathspec_hits"
+    violations=$((violations + 1))
+fi
+
 echo "[*] AC34: hash-visible generated files use canonical LF writers"
 if ! python3 scripts/check_hash_visible_lf_writes.py; then
     echo "[x] Hash-visible generated files must route through canonical LF writers"

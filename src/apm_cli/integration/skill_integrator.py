@@ -376,9 +376,11 @@ def copy_skill_to_target(
         skill_dir.parent.mkdir(parents=True, exist_ok=True)
         if skill_dir.exists():
             shutil.rmtree(skill_dir)
-        from apm_cli.security.gate import ignore_non_content
-
-        shutil.copytree(source_path, skill_dir, ignore=ignore_non_content)
+        shutil.copytree(
+            source_path,
+            skill_dir,
+            ignore=build_copy_ignore(package_root=package_info.install_path),
+        )
         rewriter = SkillIntegrator()
         rewriter.init_link_resolver(package_info, target_base)
         rewriter._resolve_markdown_links_in_skill_bundle(source_path, skill_dir)
@@ -737,6 +739,7 @@ class SkillIntegrator(BaseIntegrator):
         name_filter: set[str] | None = None,
         link_rewriter: "SkillIntegrator | None" = None,
         source_paths: dict[str, Path] | None = None,
+        package_root: Path | None = None,
     ) -> tuple[int, list[Path]]:
         """Promote named skill directories to top-level skill entries.
 
@@ -853,7 +856,10 @@ class SkillIntegrator(BaseIntegrator):
                 sub_skill_path,
                 target,
                 dirs_exist_ok=True,
-                ignore=build_copy_ignore(skip_bin=skip_bin),
+                ignore=build_copy_ignore(
+                    skip_bin=skip_bin,
+                    package_root=package_root or sub_skill_path,
+                ),
             )
             if link_rewriter is not None:
                 link_rewriter._resolve_markdown_links_in_skill_bundle(sub_skill_path, target)
@@ -1005,6 +1011,7 @@ class SkillIntegrator(BaseIntegrator):
                 name_filter=name_filter,
                 link_rewriter=self,
                 skip_bin=skip_bin,
+                package_root=package_path,
             )
             if is_primary:
                 count = n
@@ -1200,7 +1207,7 @@ class SkillIntegrator(BaseIntegrator):
                 shutil.rmtree(target_skill_dir)
 
             target_skill_dir.parent.mkdir(parents=True, exist_ok=True)
-            _base_ignore = build_copy_ignore(skip_bin=skip_bin)
+            _base_ignore = build_copy_ignore(skip_bin=skip_bin, package_root=package_path)
 
             _apm_filter = shutil.ignore_patterns(".apm")
 
@@ -1234,6 +1241,7 @@ class SkillIntegrator(BaseIntegrator):
                 logger=logger if is_primary else None,
                 link_rewriter=self,
                 skip_bin=skip_bin,
+                package_root=package_path,
             )
             all_target_paths.extend(sub_deployed)
 
@@ -1363,6 +1371,7 @@ class SkillIntegrator(BaseIntegrator):
                 link_rewriter=self,
                 skip_bin=skip_bin,
                 source_paths=source_paths,
+                package_root=package_path,
             )
             if is_primary:
                 total_promoted = n

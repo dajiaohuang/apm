@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Packages can ship a `.apmignore` file (gitignore semantics, including nested
+  files and `!` negation) so `apm install`, `apm pack`, and `apm compile`
+  omit maintainer-only paths such as `evals/`. Root `SKILL.md` and `apm.yml`
+  cannot be ignored.
 - `apm install --frozen` no longer fails on a cold cache when git-sourced
   `apm_package` dependencies declare MCP servers; frozen hydration now
   succeeds as expected before any packages are fetched. (closes #2456)
