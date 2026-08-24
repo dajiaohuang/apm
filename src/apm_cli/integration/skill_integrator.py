@@ -1305,6 +1305,7 @@ class SkillIntegrator(BaseIntegrator):
             SkillIntegrationResult with all promoted skills.
         """
         self.init_link_resolver(package_info, project_root)
+        package_path = package_info.install_path
         if targets is None:
             from apm_cli.integration.targets import active_targets
 
@@ -1314,9 +1315,7 @@ class SkillIntegrator(BaseIntegrator):
         # which is just the repo/leaf name and collides across owners (see
         # _build_ownership_maps).
         _dep_ref = getattr(package_info, "dependency_ref", None)
-        parent_name = (
-            _dep_ref.get_unique_key() if _dep_ref is not None else package_info.install_path.name
-        )
+        parent_name = _dep_ref.get_unique_key() if _dep_ref is not None else package_path.name
         owned_by, lockfile_native_owners = self._build_ownership_maps(project_root)  # noqa: RUF059
 
         total_promoted = 0

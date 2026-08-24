@@ -252,23 +252,20 @@ class TestSkillIntegratorCopytreeSymlinkContainment(unittest.TestCase):
         from apm_cli.integration import skill_integrator
 
         source = inspect.getsource(skill_integrator)
-        # All three copytree calls in skill_integrator.py must reference
-        # ignore_non_content (directly or via a composing helper).
+        # All three copytree calls in skill_integrator.py must route through
+        # build_copy_ignore, which composes ignore_non_content.
         copytree_count = source.count("shutil.copytree(")
-        ignore_non_content_refs = source.count("ignore_non_content")
+        ignore_refs = source.count("build_copy_ignore")
         self.assertGreaterEqual(
             copytree_count,
             3,
             f"Expected >=3 copytree calls in skill_integrator, found {copytree_count}",
         )
-        # Each copytree must be matched by at least one ignore_non_content
-        # reference (the helper composes one import + one usage inside a
-        # closure -- still >=copytree_count).
         self.assertGreaterEqual(
-            ignore_non_content_refs,
+            ignore_refs,
             copytree_count,
-            f"Expected >={copytree_count} ignore_non_content references "
-            f"(one per copytree); found {ignore_non_content_refs}",
+            f"Expected >={copytree_count} build_copy_ignore references "
+            f"(one per copytree); found {ignore_refs}",
         )
 
 
