@@ -4298,7 +4298,9 @@ def test_marketplace_metadata_certifiability_has_single_owner() -> None:
     assert "def remote_metadata_for_profile(" in owner
     assert "not remote_metadata.certifiable" in drift
     assert "AC34: marketplace metadata-enrichment outcome authority" in guard
-    assert "Marketplace metadata certifiability must remain owned by marketplace/builder.py" in guard
+    assert (
+        "Marketplace metadata certifiability must remain owned by marketplace/builder.py" in guard
+    )
     assert "Marketplace metadata-enrichment outcome and certifiability" in architecture
 
 
