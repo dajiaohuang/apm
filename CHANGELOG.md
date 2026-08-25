@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Marketplace `sourceBase` and full HTTPS repository paths now preserve safe
+  percent-encoded segments, enabling Azure DevOps project names such as
+  `My%20Projects`. (by @aryansk; fixes #2554) (#2584)
 - `apm lock export --timestamp` now rejects malformed or timezone-naive values
   before they enter CycloneDX or SPDX metadata. (by @manideep-malyala; fixes
   #2659) (#2660)
@@ -44,6 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every OS. Existing Windows lockfiles may retain the old CRLF-domain hash;
   keep the lockfile so its `resolved_commit` pins remain intact while the
   automatic one-time repair tracked in #2628 lands. (closes #2619)
+- `apm compile` now reduces matching work for literal scoped `applyTo` patterns
+  in large repositories while preserving historical placement. It shares a
+  source inventory across discovery and placement while preserving cleanup
+  behavior, and preserves commas in character classes. (#2595)
 - Hook commands such as `"${CLAUDE_PLUGIN_ROOT}"/hooks/probe.py` now rewrite to
   `"${CLAUDE_PLUGIN_ROOT}/hooks/probe.py"` and warn when a supported plugin-root
   placeholder remains unresolved instead of silently deploying a dead hook.

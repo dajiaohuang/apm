@@ -195,20 +195,8 @@ if [ -n "$compiled_write_hits" ]; then
     violations=$((violations + 1))
 fi
 distributed_compiler="src/apm_cli/compilation/distributed_compiler.py"
-nested_worktree_walk_count=$(grep -Fc \
-    'for directory, child_dirs, files in os.walk(self.base_dir, followlinks=False):' \
-    "$distributed_compiler" || true)
-nested_worktree_boundary_count=$(grep -Fc \
-    '(directory_path / ".git").is_file()' \
-    "$distributed_compiler" || true)
-nested_worktree_prune_count=$(grep -Fc 'child_dirs.clear()' "$distributed_compiler" || true)
-nested_worktree_rglob_hits=$(grep -En 'rglob\("AGENTS\.md"\)' "$distributed_compiler" || true)
-if [ "$nested_worktree_walk_count" -ne 1 ] \
-    || [ "$nested_worktree_boundary_count" -ne 1 ] \
-    || [ "$nested_worktree_prune_count" -ne 1 ] \
-    || [ -n "$nested_worktree_rglob_hits" ]; then
-    echo "[x] Nested worktree cleanup must prune .git-file roots"
-    [ -n "$nested_worktree_rglob_hits" ] && echo "$nested_worktree_rglob_hits"
+if ! python3 scripts/check_compile_inventory_authority.py; then
+    echo "[x] Compile traversal must use the shared inventory"
     violations=$((violations + 1))
 fi
 agents_source_attribution_output=$(python3 scripts/check_agents_source_attribution_owner.py \
@@ -866,6 +854,48 @@ if ! printf '%s\n' "$packed_source_body" \
     || [ -n "$packed_source_parallel_hits" ]; then
     echo "[x] Packed marketplace sources must use DependencyReference.parse_from_dict"
     [ -n "$packed_source_parallel_hits" ] && echo "$packed_source_parallel_hits"
+    violations=$((violations + 1))
+fi
+
+marketplace_check_coordinates_body=$(awk '
+    /^def _entry_coordinates\(/ {flag=1}
+    flag && /^def / && !/^def _entry_coordinates\(/ {exit}
+    flag {print}
+' src/apm_cli/commands/marketplace/check.py)
+marketplace_check_parallel_parser_hits=$(printf '%s\n' "$marketplace_check_coordinates_body" \
+    | grep -En 'split_source_base\(|decode_url_path_segments\(|urlparse\(' \
+    | grep -v 'architecture-authority-exempt:' || true)
+if ! printf '%s\n' "$marketplace_check_coordinates_body" \
+        | grep -Fq 'DependencyReference.parse(entry.source_url)' \
+    || ! printf '%s\n' "$marketplace_check_coordinates_body" \
+        | grep -Fq 'DependencyReference.parse(source_url)' \
+    || [ -n "$marketplace_check_parallel_parser_hits" ]; then
+    echo "[x] Marketplace check source coordinates must use DependencyReference parsing"
+    [ -n "$marketplace_check_parallel_parser_hits" ] && echo "$marketplace_check_parallel_parser_hits"
+    violations=$((violations + 1))
+fi
+
+echo "[*] AC10a: strict URL-path decoding authority"
+url_path_owner="src/apm_cli/utils/path_security.py"
+url_path_parallel_decoders=$(
+    grep -REn --include='*.py' 'unquote(_to_bytes)?\(' \
+        src/apm_cli/marketplace/yml_schema.py \
+        src/apm_cli/models/dependency/reference.py \
+        src/apm_cli/commands/marketplace/__init__.py \
+        | grep -v 'architecture-authority-exempt:' || true
+)
+if ! grep -Fq 'def parse_url_path_segments(' "$url_path_owner" \
+    || ! grep -Fq 'decode_url_path_segments(parsed.path, context=context)' \
+        src/apm_cli/marketplace/yml_schema.py \
+    || ! grep -Fq 'decode_url_path_segments(parsed.path, context="sourceBase")' \
+        src/apm_cli/marketplace/yml_schema.py \
+    || ! grep -Fq 'parse_url_path_segments(' \
+        src/apm_cli/models/dependency/reference.py \
+    || ! grep -Fq 'decode_url_path_segments(parsed.path, context="marketplace URL path")' \
+        src/apm_cli/commands/marketplace/__init__.py \
+    || [ -n "$url_path_parallel_decoders" ]; then
+    echo "[x] Strict percent-encoded URL paths must use path_security parsing"
+    [ -n "$url_path_parallel_decoders" ] && echo "$url_path_parallel_decoders"
     violations=$((violations + 1))
 fi
 
@@ -1678,6 +1708,9 @@ apply_to_owner="src/apm_cli/utils/patterns.py"
 apply_to_normalizer_defs=$(grep -rEc --include='*.py' \
     '^def _?normalize_apply_to\(' src/apm_cli \
     | awk -F: '{sum += $2} END {print sum + 0}')
+apply_to_prefix_defs=$(grep -rEc --include='*.py' \
+    '^def literal_apply_to_top_level_roots\(' src/apm_cli \
+    | awk -F: '{sum += $2} END {print sum + 0}')
 apply_to_parser="src/apm_cli/primitives/parser.py"
 hidden_tool_placement_owner="src/apm_cli/compilation/context_optimizer.py"
 hidden_tool_tree_defs=$(grep -rEc --include='*.py' \
@@ -1685,13 +1718,17 @@ hidden_tool_tree_defs=$(grep -rEc --include='*.py' \
     | awk -F: '{sum += $2} END {print sum + 0}')
 if [ "$apply_to_normalizer_defs" -ne 1 ] \
     || ! grep -q '^def normalize_apply_to(' "$apply_to_owner" \
+    || [ "$apply_to_prefix_defs" -ne 1 ] \
+    || ! grep -q '^def literal_apply_to_top_level_roots(' "$apply_to_owner" \
     || ! grep -q 'from apm_cli.utils.patterns import normalize_apply_to' "$apply_to_parser" \
     || grep -Eq '^def _?normalize_apply_to\(' "$apply_to_parser" \
     || ! grep -q 'normalize_apply_to(metadata.get("applyTo"), default="")' "$apply_to_parser" \
     || [ "$hidden_tool_tree_defs" -ne 1 ] \
     || ! grep -q '^PLACEMENT_HIDDEN_TOOL_TREES = frozenset(' "$hidden_tool_placement_owner" \
+    || ! grep -q 'literal_apply_to_top_level_roots(' "$hidden_tool_placement_owner" \
+    || grep -q '^    def _targeted_top_level_roots(' "$hidden_tool_placement_owner" \
     || ! grep -q 'not self._is_supported_hidden_tool_root(path)' "$hidden_tool_placement_owner"; then
-    echo "[x] applyTo normalization must use utils/patterns.py and hidden placement ContextOptimizer"
+    echo "[x] applyTo parsing must use utils/patterns.py and hidden placement ContextOptimizer"
     violations=$((violations + 1))
 fi
 
