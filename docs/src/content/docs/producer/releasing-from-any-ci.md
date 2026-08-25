@@ -86,7 +86,8 @@ sequence above. It installs the CLI, verifies with `apm pack
 and sidecars, and
 calls `gh release create` against the pushed tag. Use it when you
 want one less script to maintain; use the raw `run:` form below when
-you need to customise any step.
+you need to customise any step, including `--strict-metadata`
+certification before artifact generation.
 
 > **Reference deployment.** [`DevExpGbb/zava-agent-config`](https://github.com/DevExpGbb/zava-agent-config)
 > runs this exact pipeline. The
@@ -214,9 +215,13 @@ steps:
 | 4    | `--check-clean`   | Committed `marketplace.json` does not match a fresh pack, or remote Claude package metadata was unfetchable. For drift, run `apm pack` locally, commit the diff, then re-tag. For metadata unavailability, restore the remote source or CI credentials and rerun; committing a regenerated file cannot certify unavailable metadata. |
 | 5    | `--strict-metadata`| Remote Claude package metadata could not be fetched, so `apm pack` refused to write. Retry with network access, or omit `--strict-metadata` when the default warning is acceptable. |
 
-The gates never write to disk -- they only refuse to release.
-Recover by running the same `apm pack` locally without `--check-*`,
-inspecting the diff, and pushing a clean tag.
+`--check-versions` and `--check-clean` are validation-only and never
+write to disk. `--strict-metadata` certifies metadata before the
+subsequent pack writes artifacts. Recover drift by running `apm pack`
+locally without `--check-*`, inspecting the diff, and pushing a clean
+tag. For metadata unavailability, restore the remote source or CI
+credentials instead; regenerating a file cannot certify missing
+metadata.
 
 :::note
 `microsoft/apm-action@v1` is a thin convenience wrapper, not a new

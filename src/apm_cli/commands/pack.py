@@ -386,6 +386,7 @@ def pack_cmd(  # noqa: C901, PLR0913 -- Click handler, one param per CLI option
             "pack.target metadata only and is ignored by 'apm install'."
         )
         effective_target = target
+    effective_dry_run = dry_run or check_clean
     options = BuildOptions(
         project_root=project_root,
         apm_yml_path=project_root / "apm.yml",
@@ -400,7 +401,7 @@ def pack_cmd(  # noqa: C901, PLR0913 -- Click handler, one param per CLI option
         marketplace_strict_metadata=strict_metadata,
         marketplace_formats=marketplace_formats,
         marketplace_path_overrides=path_overrides if path_overrides else None,
-        dry_run=dry_run,
+        dry_run=effective_dry_run,
         verbose=verbose,
     )
 
@@ -415,7 +416,7 @@ def pack_cmd(  # noqa: C901, PLR0913 -- Click handler, one param per CLI option
                     BuildReport.failure_to_json_dict(
                         errors=[{"code": "metadata_incomplete", "message": str(exc)}],
                         warnings=list(exc.metadata_enrichment.warnings),
-                        dry_run=dry_run,
+                        dry_run=effective_dry_run,
                         metadata_enrichment=exc.metadata_enrichment,
                     )
                 )
@@ -589,7 +590,7 @@ def pack_cmd(  # noqa: C901, PLR0913 -- Click handler, one param per CLI option
     if json_output:
         envelope = {
             "ok": True,
-            "dry_run": dry_run,
+            "dry_run": effective_dry_run,
             "warnings": list(result.warnings),
             "errors": [],
             "metadata_enrichment": {"certifiable": True, "outcomes": []},
@@ -628,7 +629,7 @@ def pack_cmd(  # noqa: C901, PLR0913 -- Click handler, one param per CLI option
                 sub.payload,
                 bundle_format,
                 target,
-                dry_run,
+                effective_dry_run,
                 show_zip_migration_notice=(
                     archive
                     and archive_format == "zip"
@@ -637,7 +638,13 @@ def pack_cmd(  # noqa: C901, PLR0913 -- Click handler, one param per CLI option
                 ),
             )
         elif sub.kind is OutputKind.MARKETPLACE:
-            _render_marketplace_result(logger, sub.payload, dry_run, sub.warnings, sub.outputs)
+            _render_marketplace_result(
+                logger,
+                sub.payload,
+                effective_dry_run,
+                sub.warnings,
+                sub.outputs,
+            )
 
     # Gate exit codes (after non-JSON rendering above): 3 wins over 4.
     if version_gate_failed:
