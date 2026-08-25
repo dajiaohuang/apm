@@ -83,6 +83,7 @@ semicolon-delimited, and specific to the file(s) that own the fact.
 | Legacy plugin declared-skill membership | deps/plugin_parser.py (_map_plugin_artifacts, normalized_plugin_skill_sources) | `src/apm_cli/deps/plugin_parser.py`; `src/apm_cli/integration/skill_integrator.py` |
 | Package ship/deploy/compile path membership from `.apmignore` | utils/apmignore.py (ApmIgnoreSpec) | `src/apm_cli/utils/apmignore.py` |
 | Strict percent-encoded URL-path decoding and safety | utils/path_security.py (decode_url_path_segments) | `src/apm_cli/utils/path_security.py` |
+| User-root scoped instruction eligibility | integration/targets.py (TargetProfile.include_scoped_in_user_root_context) | `src/apm_cli/integration/targets.py` |
 <!-- /canonical-owner-table -->
 
 Host + credential resolution includes public github.com anonymous-first ordering.
