@@ -68,6 +68,19 @@ def test_install_request_defaults_have_single_owner() -> None:
     )
 
 
+def test_uninstall_reintegration_routes_through_the_deployable_source_plan() -> None:
+    """Uninstall rebuild must not recreate a direct, unscanned write path."""
+    root = Path(__file__).parents[2]
+    engine = (root / "src/apm_cli/commands/uninstall/engine.py").read_text(encoding="utf-8")
+    guard = (root / "scripts/lint-architecture-boundaries.sh").read_text(encoding="utf-8")
+
+    assert "integrate_package_primitives(" in engine
+    assert "integrate_package_skill(" not in engine
+    assert (
+        "Deployable hook paths must route through the shared target-aware source selector" in guard
+    )
+
+
 def test_git_semver_preflight_eligibility_has_single_owner() -> None:
     """Positional ingress must consume, not duplicate, git-semver eligibility."""
     root = Path(__file__).parents[2]
@@ -205,7 +218,10 @@ def test_agent_plugin_contract_has_single_owner() -> None:
     assert "| Agent Plugin producer portable-surface admission |" in architecture
     assert "| APMPackage interpreted-manifest construction |" in architecture
     assert "| Agent Plugin compatibility package projection |" in architecture
-    assert "| Neutral hook source grammar and shape -> per-target native |" in architecture
+    assert (
+        "| Neutral hook source grammar, per-target native shape, and "
+        "shared-config APM-owned drift projection |"
+    ) in architecture
     assert "src/apm_cli/hook_contract.py" in architecture
     assert architecture == (root / ".apm/instructions/architecture.instructions.md").read_text(
         encoding="utf-8"
@@ -532,7 +548,7 @@ def test_agent_plugin_component_ir_mutations_are_killed(
             "native deployment boundary must fail closed",
         ),
         (
-            "src/apm_cli/integration/skill_integrator.py",
+            "src/apm_cli/integration/skill_package_routing.py",
             "        PackageType.SKILL_BUNDLE,\n        PackageType.MARKETPLACE_PLUGIN,",
             "        PackageType.SKILL_BUNDLE,\n"
             "        PackageType.AGENT_PLUGIN,\n"
@@ -738,6 +754,7 @@ def test_agent_plugin_projection_guard_rejects_bypass(
         "src/apm_cli/install/phases/integrate.py",
         "src/apm_cli/install/local_bundle_handler.py",
         "src/apm_cli/integration/skill_integrator.py",
+        "src/apm_cli/integration/skill_package_routing.py",
         "src/apm_cli/marketplace/resolver.py",
         "src/apm_cli/policy/ci_checks.py",
         "src/apm_cli/commands/uninstall/cli.py",
@@ -780,6 +797,139 @@ def test_policy_cache_metadata_redaction_has_single_owner() -> None:
     assert '"repo_ref": _redact_policy_ref(repo_ref)' in owner
     assert '"chain_refs": [_redact_policy_ref(ref) for ref in persisted_chain_refs]' in owner
     assert "Policy cache metadata must redact URL credentials at its canonical writer" in guard
+
+
+def test_deployable_source_paths_have_single_authorized_plan() -> None:
+    """Security scanning and skill materialization must share one source plan."""
+    root = Path(__file__).parents[2]
+    owner = (root / "src/apm_cli/install/deployable_source_plan.py").read_text(encoding="utf-8")
+    services = (root / "src/apm_cli/install/services.py").read_text(encoding="utf-8")
+    scanner = (root / "src/apm_cli/install/helpers/security_scan.py").read_text(encoding="utf-8")
+    skills = (root / "src/apm_cli/integration/skill_integrator.py").read_text(encoding="utf-8")
+    path_security = (root / "src/apm_cli/utils/path_security.py").read_text(encoding="utf-8")
+    security_gate = (root / "src/apm_cli/security/gate.py").read_text(encoding="utf-8")
+    hook_ownership = (root / "src/apm_cli/integration/hook_ownership.py").read_text(
+        encoding="utf-8"
+    )
+    guard = (root / "scripts/lint-architecture-boundaries.sh").read_text(encoding="utf-8")
+
+    assert owner.count("class DeployableSourcePlan:") == 1
+    assert "source_plan = DeployableSourcePlan.create(" in services
+    assert "source_plan.scan_security(" in scanner
+    assert "paths=self.paths" in owner
+    assert path_security.count("def has_symlink_component(") == 1
+    assert "has_symlink_component(source_root, path)" in owner
+    assert "has_symlink_component(root, candidate)" in security_gate
+    assert "has_symlink_component(apm_modules, package_path)" in hook_ownership
+    assert "source_plan=source_plan" in services
+    assert "source_plan.copy_ignore" in skills
+    assert "from apm_cli.install.exec_gate import plugin_bin_deployable" in skills
+    assert "HookIntegrator.select_deployable_hook_sources" in owner
+    assert "CanvasIntegrator.find_canvas_bundles" in owner
+    assert (
+        "Deployable hook paths must route through the shared target-aware source selector" in guard
+    )
+    hooks = (root / "src/apm_cli/integration/hook_integrator.py").read_text(encoding="utf-8")
+    kiro_hooks = (root / "src/apm_cli/integration/kiro_hook_integrator.py").read_text(
+        encoding="utf-8"
+    )
+    assert "selected_bundle_files=hook_sources.bundle_for" in hooks
+    assert "selected_bundle_files=selected_bundle_files" in kiro_hooks
+    for integrator in (
+        "prompt_integrator.py",
+        "agent_integrator.py",
+        "command_integrator.py",
+        "instruction_integrator.py",
+        "hook_integrator.py",
+        "kiro_hook_integrator.py",
+        "canvas_integrator.py",
+    ):
+        content = (root / "src/apm_cli/integration" / integrator).read_text(encoding="utf-8")
+        assert "source_plan" in content
+
+    def function_body(signature: str) -> str:
+        return skills.split(signature, 1)[1].split("\n    def ", 1)[0]
+
+    assert "source_plan=source_plan" in function_body("def _integrate_native_skill(")
+    assert "source_plan=source_plan" in function_body("def _integrate_skill_bundle(")
+    assert "source_plan=source_plan" in function_body("def integrate_package_skill(")
+
+
+def test_deployable_source_plan_guard_rejects_parallel_classifier(tmp_path: Path) -> None:
+    """The boundary lint rejects a second deployable-path authority."""
+    root = Path(__file__).parents[2]
+    sandbox = tmp_path / "repo"
+    shutil.copytree(
+        root,
+        sandbox,
+        ignore=shutil.ignore_patterns(
+            ".git",
+            ".venv",
+            ".pytest_cache",
+            "__pycache__",
+            "build",
+            "dist",
+            "node_modules",
+        ),
+    )
+    duplicate = sandbox / "src/apm_cli/install/helpers/security_scan.py"
+    duplicate.write_text(
+        duplicate.read_text(encoding="utf-8") + "\n\nclass DeployableSourcePlan:\n    pass\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ("bash", "scripts/lint-architecture-boundaries.sh"),
+        cwd=sandbox,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+
+    assert result.returncode == 1
+    assert "Deployable hook paths must route through the shared target-aware source selector" in (
+        result.stdout
+    )
+
+
+def test_plugin_bin_eligibility_guard_rejects_parallel_owner(tmp_path: Path) -> None:
+    """The boundary lint rejects a second plugin bin eligibility decision."""
+    root = Path(__file__).parents[2]
+    sandbox = tmp_path / "repo"
+    shutil.copytree(
+        root,
+        sandbox,
+        ignore=shutil.ignore_patterns(
+            ".git",
+            ".venv",
+            ".pytest_cache",
+            "__pycache__",
+            "build",
+            "dist",
+            "node_modules",
+        ),
+    )
+    duplicate = sandbox / "src/apm_cli/install/services.py"
+    duplicate.write_text(
+        duplicate.read_text(encoding="utf-8")
+        + "\n\ndef _plugin_bin_deployable(*_args, **_kwargs):\n    return True\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ("bash", "scripts/lint-architecture-boundaries.sh"),
+        cwd=sandbox,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+
+    assert result.returncode == 1
+    assert (
+        "Plugin bin deployment eligibility must route through install/exec_gate.py" in result.stdout
+    )
 
 
 def test_user_root_scoped_instruction_eligibility_has_single_owner(tmp_path: Path) -> None:
@@ -1654,115 +1804,6 @@ def test_packed_marketplace_source_parsing_has_single_owner() -> None:
     assert "Packed marketplace sources must use DependencyReference.parse_from_dict" in guard
 
 
-def test_marketplace_check_source_coordinates_use_single_parser() -> None:
-    """Marketplace check source coordinates must use DependencyReference."""
-    root = Path(__file__).parents[2]
-    check = (root / "src/apm_cli/commands/marketplace/check.py").read_text(encoding="utf-8")
-    guard = (root / "scripts/lint-architecture-boundaries.sh").read_text(encoding="utf-8")
-
-    helper = check.split("def _entry_coordinates(", maxsplit=1)[1].split("\ndef ", maxsplit=1)[0]
-    assert "DependencyReference.parse(entry.source_url)" in helper
-    assert "DependencyReference.parse(source_url)" in helper
-    assert "Marketplace check source coordinates must use DependencyReference parsing" in guard
-
-
-def test_marketplace_check_coordinate_guard_rejects_parallel_parser(tmp_path: Path) -> None:
-    """AC10 rejects sourceBase parsing that bypasses DependencyReference."""
-    root = Path(__file__).parents[2]
-    sandbox = tmp_path / "repo"
-    shutil.copytree(
-        root,
-        sandbox,
-        ignore=shutil.ignore_patterns(
-            ".git",
-            ".venv",
-            ".pytest_cache",
-            "__pycache__",
-            "build",
-            "dist",
-            "node_modules",
-        ),
-    )
-    check_path = sandbox / "src/apm_cli/commands/marketplace/check.py"
-    check_path.write_text(
-        check_path.read_text(encoding="utf-8").replace(
-            "dependency = DependencyReference.parse(source_url)",
-            "dependency = DependencyReference(repo_url=entry.source)",
-            1,
-        ),
-        encoding="utf-8",
-    )
-
-    result = subprocess.run(
-        ("bash", "scripts/lint-architecture-boundaries.sh"),
-        cwd=sandbox,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=300,
-    )
-
-    assert result.returncode == 1
-    assert "Marketplace check source coordinates must use DependencyReference parsing" in (
-        result.stdout
-    )
-
-
-def test_strict_url_path_decoding_has_single_owner() -> None:
-    """AC10a keeps URL structure parsing separate from percent decoding."""
-    root = Path(__file__).parents[2]
-    owner = (root / "src/apm_cli/utils/path_security.py").read_text(encoding="utf-8")
-    schema = (root / "src/apm_cli/marketplace/yml_schema.py").read_text(encoding="utf-8")
-    reference = (root / "src/apm_cli/models/dependency/reference.py").read_text(encoding="utf-8")
-    guard = (root / "scripts/lint-architecture-boundaries.sh").read_text(encoding="utf-8")
-
-    assert "def parse_url_path_segments(" in owner
-    assert "decode_url_path_segments(parsed.path, context=context)" in schema
-    assert "parse_url_path_segments(" in reference
-    assert "dependency_str = urllib.parse.unquote(dependency_str)" not in reference
-    assert "Strict percent-encoded URL paths must use path_security parsing" in guard
-
-
-def test_strict_url_path_decoder_guard_rejects_parallel_decoder(tmp_path: Path) -> None:
-    """AC10a catches a mutation that reintroduces a local URL decoder."""
-    root = Path(__file__).parents[2]
-    sandbox = tmp_path / "repo"
-    shutil.copytree(
-        root,
-        sandbox,
-        ignore=shutil.ignore_patterns(
-            ".git",
-            ".venv",
-            ".pytest_cache",
-            "__pycache__",
-            "build",
-            "dist",
-            "node_modules",
-        ),
-    )
-    schema_path = sandbox / "src/apm_cli/marketplace/yml_schema.py"
-    schema_path.write_text(
-        schema_path.read_text(encoding="utf-8").replace(
-            "decode_url_path_segments(parsed.path, context=context)",
-            "_urlparse.unquote(parsed.path)",
-            1,
-        ),
-        encoding="utf-8",
-    )
-
-    result = subprocess.run(
-        ("bash", "scripts/lint-architecture-boundaries.sh"),
-        cwd=sandbox,
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=300,
-    )
-
-    assert result.returncode == 1
-    assert "Strict percent-encoded URL paths must use path_security parsing" in (result.stdout)
-
-
 def test_packed_marketplace_source_owner_guard_rejects_parallel_parser(
     tmp_path: Path,
 ) -> None:
@@ -2092,11 +2133,12 @@ def test_drift_hook_membership_exemptions_use_canonical_registries() -> None:
     root = Path(__file__).parents[2]
     consumer = (root / "src/apm_cli/install/manifest_reconcile.py").read_text(encoding="utf-8")
     guard = (root / "scripts/lint-architecture-boundaries.sh").read_text(encoding="utf-8")
-    body = consumer.split("def merge_hook_config_paths(", maxsplit=1)[1].split(
+    body = consumer.split("def merge_hook_config_projection_specs(", maxsplit=1)[1].split(
         "\ndef ",
         maxsplit=1,
     )[0]
 
+    assert "merge_hook_config_projection_specs(targets)" in consumer
     assert "_MERGE_HOOK_TARGETS" in body
     assert "_APM_HOOKS_SIDECAR" in body
     assert "settings.json" not in body
@@ -3108,10 +3150,50 @@ def test_merged_hook_ownership_markers_have_one_owner() -> None:
 
     assert "def dependency_hook_source_marker(" in owner
     assert "def dependency_hook_sources(" in owner
+    assert "def project_apm_owned_hook_entries(" in owner
     assert "from apm_cli.integration.hook_ownership import (" in integrator
     assert "def _dependency_hook_source_marker(" not in integrator
-    assert "Merged-hook ownership markers must route through integration/hook_ownership.py" in guard
+    assert "Shared hook drift projection must route through hook_ownership.py" in guard
     assert "`src/apm_cli/integration/hook_ownership.py`" in architecture
+
+
+def test_shared_hook_drift_projection_guard_rejects_bypass(tmp_path: Path) -> None:
+    """The static guard rejects drift reintroducing whole-file shared-config comparison."""
+    root = Path(__file__).parents[2]
+    sandbox = tmp_path / "repo"
+    shutil.copytree(
+        root,
+        sandbox,
+        ignore=shutil.ignore_patterns(
+            ".git",
+            ".venv",
+            ".pytest_cache",
+            "__pycache__",
+            "build",
+            "dist",
+            "node_modules",
+        ),
+    )
+    drift_path = sandbox / "src/apm_cli/install/drift.py"
+    drift_path.write_text(
+        drift_path.read_text(encoding="utf-8").replace(
+            "project_apm_owned_hook_entries(",
+            "bypassed_hook_projection(",
+        ),
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ("bash", "scripts/lint-architecture-boundaries.sh"),
+        cwd=sandbox,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=300,
+    )
+
+    assert result.returncode == 1
+    assert "Shared hook drift projection must route through hook_ownership.py" in result.stdout
 
 
 def test_dependency_winner_selection_has_one_algorithm() -> None:

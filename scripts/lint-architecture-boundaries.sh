@@ -277,6 +277,82 @@ check_pattern \
     $(find src/apm_cli -name '*.py' ! -path 'src/apm_cli/deps/lockfile.py')
 
 echo "[*] AC3: outcome and policy enforcement authorities"
+deployable_plan_owner="src/apm_cli/install/deployable_source_plan.py"
+deployable_plan_definition_count=$(grep -Ec '^class DeployableSourcePlan:' "$deployable_plan_owner" || true)
+deployable_plan_duplicate_hits=$(
+    grep -rEn --include='*.py' \
+        '^class DeployableSourcePlan:' \
+        src/apm_cli \
+        | grep -Fv "${deployable_plan_owner}:" \
+        || true
+)
+if [ "$deployable_plan_definition_count" -ne 1 ] \
+    || ! grep -q 'source_plan = DeployableSourcePlan.create(' src/apm_cli/install/services.py \
+    || ! grep -q 'source_plan.scan_security(' src/apm_cli/install/helpers/security_scan.py \
+    || ! grep -q 'paths=self.paths' "$deployable_plan_owner" \
+    || ! grep -q 'source_plan=source_plan' src/apm_cli/install/services.py \
+    || ! grep -q 'integrate_package_primitives(' src/apm_cli/commands/uninstall/engine.py \
+    || grep -q 'integrate_package_skill(' src/apm_cli/commands/uninstall/engine.py \
+    || ! grep -q 'source_plan = DeployableSourcePlan.create(' src/apm_cli/integration/skill_integrator.py \
+    || ! grep -q 'HookIntegrator.select_deployable_hook_sources' "$deployable_plan_owner" \
+    || ! grep -q 'selected_bundle_files=hook_sources.bundle_for' src/apm_cli/integration/hook_integrator.py \
+    || ! grep -q 'selected_bundle_files=selected_bundle_files' src/apm_cli/integration/kiro_hook_integrator.py \
+    || ! grep -q 'CanvasIntegrator.find_canvas_bundles' "$deployable_plan_owner" \
+    || [ -n "$deployable_plan_duplicate_hits" ]; then
+    echo "[x] Deployable hook paths must route through the shared target-aware source selector"
+    [ -n "$deployable_plan_duplicate_hits" ] && echo "$deployable_plan_duplicate_hits"
+    violations=$((violations + 1))
+fi
+symlink_component_owner="src/apm_cli/utils/path_security.py"
+symlink_component_definition_count=$(
+    grep -Ec '^def has_symlink_component\(' "$symlink_component_owner" || true
+)
+symlink_component_duplicate_hits=$(
+    grep -rEn --include='*.py' \
+        '^def has_symlink_component\(' \
+        src/apm_cli \
+        | grep -Fv "${symlink_component_owner}:" \
+        || true
+)
+if [ "$symlink_component_definition_count" -ne 1 ] \
+    || [ -n "$symlink_component_duplicate_hits" ]; then
+    echo "[x] Symlink-component containment must route through utils/path_security.py"
+    [ -n "$symlink_component_duplicate_hits" ] && echo "$symlink_component_duplicate_hits"
+    violations=$((violations + 1))
+fi
+deployable_plan_consumers=(
+    src/apm_cli/integration/prompt_integrator.py
+    src/apm_cli/integration/agent_integrator.py
+    src/apm_cli/integration/command_integrator.py
+    src/apm_cli/integration/instruction_integrator.py
+    src/apm_cli/integration/hook_integrator.py
+    src/apm_cli/integration/hook_bundle.py
+    src/apm_cli/integration/kiro_hook_integrator.py
+    src/apm_cli/integration/canvas_integrator.py
+)
+for deployable_plan_consumer in "${deployable_plan_consumers[@]}"; do
+    if ! grep -q 'source_plan' "$deployable_plan_consumer"; then
+        echo "[x] Primitive materializers must consume the canonical deployable source plan: $deployable_plan_consumer"
+        violations=$((violations + 1))
+    fi
+done
+bin_deploy_owner="src/apm_cli/install/exec_gate.py"
+bin_deploy_definition_count=$(grep -Ec '^def plugin_bin_deployable\(' "$bin_deploy_owner" || true)
+bin_deploy_duplicate_hits=$(
+    grep -rEn --include='*.py' \
+        '^def _?plugin_bin_deployable\(' \
+        src/apm_cli/install \
+        | grep -Fv "${bin_deploy_owner}:" \
+        || true
+)
+if [ "$bin_deploy_definition_count" -ne 1 ] \
+    || ! grep -Fq 'plugin_bin_deployable as _plugin_bin_deployable' src/apm_cli/install/services.py \
+    || ! grep -Fq 'from apm_cli.install.exec_gate import plugin_bin_deployable' src/apm_cli/integration/skill_integrator.py \
+    || [ -n "$bin_deploy_duplicate_hits" ]; then
+    echo "[x] Plugin bin deployment eligibility must route through install/exec_gate.py"
+    [ -n "$bin_deploy_duplicate_hits" ] && echo "$bin_deploy_duplicate_hits"
+    violations=$((violations + 1))
+fi
 check_pattern \
     "Install adapters must not classify diagnostics" \
     'classify_post_install_result' \
@@ -506,16 +582,40 @@ if [ "$shared_target_status" -ne 0 ]; then
     echo "$shared_target_output"
     violations=$((violations + 1))
 fi
-merge_hook_membership_body=$(awk '
+merge_hook_paths_body=$(awk '
     /^def merge_hook_config_paths\(/ {flag=1}
     flag && /^def / && !/^def merge_hook_config_paths\(/ {exit}
     flag {print}
 ' src/apm_cli/install/manifest_reconcile.py)
-if ! printf '%s\n' "$merge_hook_membership_body" | grep -q '_MERGE_HOOK_TARGETS' \
+merge_hook_membership_body=$(awk '
+    /^def merge_hook_config_projection_specs\(/ {flag=1}
+    flag && /^def / && !/^def merge_hook_config_projection_specs\(/ {exit}
+    flag {print}
+' src/apm_cli/install/manifest_reconcile.py)
+if ! printf '%s\n' "$merge_hook_paths_body" \
+        | grep -q 'merge_hook_config_projection_specs(targets)' \
+    || ! printf '%s\n' "$merge_hook_membership_body" | grep -q '_MERGE_HOOK_TARGETS' \
     || ! printf '%s\n' "$merge_hook_membership_body" | grep -q '_APM_HOOKS_SIDECAR' \
     || printf '%s\n' "$merge_hook_membership_body" \
         | grep -Eq 'settings\.json|hooks\.json|apm-hooks\.json'; then
     echo "[x] Drift hook membership exemptions must derive from HookIntegrator registries"
+    violations=$((violations + 1))
+fi
+hook_projection_owner="src/apm_cli/integration/hook_ownership.py"
+hook_projection_consumer="src/apm_cli/install/drift.py"
+hook_projection_definition_count=$(grep -Ec \
+    '^def project_apm_owned_hook_entries\(' "$hook_projection_owner" || true)
+hook_projection_call_count=$(grep -Fc \
+    'project_apm_owned_hook_entries(' "$hook_projection_consumer" || true)
+hook_projection_duplicates=$(grep -rEn --include='*.py' \
+    '^def project_apm_owned_hook_entries\(' src/apm_cli \
+    | grep -v "^${hook_projection_owner}:" \
+    || true)
+if [ "$hook_projection_definition_count" -ne 1 ] \
+    || [ "$hook_projection_call_count" -ne 2 ] \
+    || [ -n "$hook_projection_duplicates" ]; then
+    echo "[x] Shared hook drift projection must route through hook_ownership.py"
+    [ -n "$hook_projection_duplicates" ] && echo "$hook_projection_duplicates"
     violations=$((violations + 1))
 fi
 check_pattern \

@@ -241,32 +241,32 @@ class TestSkillIntegratorCopytreeSymlinkContainment(unittest.TestCase):
         self.assertNotIn("evil.txt", copied)
         self.assertNotIn("agents/evil-nested.txt", copied)
 
-    def test_skill_integrator_native_skill_copytree_uses_ignore_non_content(self):
-        """integrate_native_skills passes ignore_non_content to shutil.copytree.
+    def test_skill_integrator_native_skill_copytree_uses_deployable_copy_filter(self):
+        """Every skill copytree uses the canonical deployable copy filter.
 
-        Source-level guard: if a future refactor drops the callback,
-        this test fails before any malicious package can exploit it.
+        The filter composes ``ignore_non_content`` through
+        ``build_copy_ignore`` with ``DeployableSourcePlan.copy_ignore``. This
+        keeps cache markers and symlinks out while also rejecting any
+        source-only content that the deployment plan did not authorize.
         """
         import inspect
 
         from apm_cli.integration import skill_integrator
 
         source = inspect.getsource(skill_integrator)
-        # All three copytree calls in skill_integrator.py must route through
-        # build_copy_ignore, which composes ignore_non_content.
         copytree_count = source.count("shutil.copytree(")
-        ignore_refs = source.count("build_copy_ignore")
         self.assertGreaterEqual(
             copytree_count,
             3,
             f"Expected >=3 copytree calls in skill_integrator, found {copytree_count}",
         )
         self.assertGreaterEqual(
-            ignore_refs,
+            source.count("ignore=_build_deployable_copy_ignore("),
             copytree_count,
-            f"Expected >={copytree_count} build_copy_ignore references "
-            f"(one per copytree); found {ignore_refs}",
+            "Every skill copytree must use the canonical deployable copy filter",
         )
+        self.assertIn("base_ignore = build_copy_ignore(", source)
+        self.assertIn("source_plan.copy_ignore(directory, contents)", source)
 
 
 class TestIgnoreNonContentSourceGuard(unittest.TestCase):
