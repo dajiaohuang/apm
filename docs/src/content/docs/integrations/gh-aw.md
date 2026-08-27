@@ -62,7 +62,26 @@ The per-primitive path form is what makes `github/awesome-copilot/skills/review-
 
 Set the required `target:` input to the APM target that matches `engine:`. This is the only target signal: the shared workflow runs `apm-action` in isolated mode and intentionally ignores any `apm.yml` in the consumer repository. For example, use `target: copilot` with `engine: copilot`. Do not pass `all`; it is a CLI-only flag, not an `apm.yml` target.
 
-Packages are fetched using gh-aw's cascading token fallback: `GH_AW_PLUGINS_TOKEN` -> `GH_AW_GITHUB_TOKEN` -> `GITHUB_TOKEN`. The shared `apm` job grants the built-in `GITHUB_TOKEN` only `contents: read`, which supports private package paths in the current repository but not other private repositories. For private cross-repository packages, configure `GH_AW_PLUGINS_TOKEN`, `GH_AW_GITHUB_TOKEN`, or GitHub App credentials.
+For no-App rows, `token-source` selects the package credential:
+
+| Value | Behavior |
+|---|---|
+| `cascade` (default) | Uses the first configured value in `GH_AW_PLUGINS_TOKEN` -> `GH_AW_GITHUB_TOKEN` -> `GITHUB_TOKEN`. A configured token that is rejected does not silently fall through to another identity. |
+| `github-token` | Uses only the ephemeral built-in token and fails if that identity is unavailable instead of falling back. The shared `apm` job grants it `contents: read`, so it can read private package paths in the current repository but not other private repositories. |
+
+Use `token-source: github-token` when every private package in `packages:` is readable by the current repository token:
+
+```yaml
+imports:
+  - uses: shared/apm.md
+    with:
+      target: copilot
+      token-source: github-token
+      packages:
+        - your-org/current-repo/.apm/skills/private-skill
+```
+
+Private cross-repository packages require the default cascade with an authorized `GH_AW_PLUGINS_TOKEN` or `GH_AW_GITHUB_TOKEN`, or GitHub App credentials. App rows always use their minted installation token regardless of `token-source`.
 
 **Pinning the apm CLI version (optional):**
 
@@ -80,7 +99,7 @@ imports:
 
 Use a bare semver tag (e.g. `'0.21.0'`). Pass `'latest'` to opt into floating to the newest release; omit the input entirely to keep the workflow's pinned default.
 
-If your vendored `shared/apm.md` came from APM v0.10.0, replace it with the canonical file and add `target:` before recompiling. That version uses `microsoft/apm-action@v1.4.2`, whose target input applies only to packing and does not reach the isolated `apm install`; no import input can repair that pair.
+If your vendored `shared/apm.md` came from APM v0.10.0, replace it with the canonical file and add `target:` before recompiling. Add `token-source: github-token` when private packages come from the current repository. That version uses `microsoft/apm-action@v1.4.2`, whose target input applies only to packing and does not reach the isolated `apm install`; no import input can repair that pair.
 
 :::note[Isolated install by default]
 `shared/apm.md` invokes `microsoft/apm-action` with `isolated: true`. Only the packages listed under `packages:` are installed -- any host-repo primitives under `.apm/` or `.github/` (instructions, prompts, skills, agents) are ignored and pre-existing primitive directories are cleared. To merge host-repo primitives with imported ones, use the [apm-action Pre-Step](#apm-action-pre-step) approach below, which leaves `isolated` at its default of `false`.

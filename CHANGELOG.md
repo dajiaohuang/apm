@@ -7,19 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- gh-aw's shared APM import now supports `token-source: github-token` and grants
+  the built-in token read-only contents access, allowing consumers to opt into
+  the current-repository identity instead of a configured cascade token. The
+  compatible default remains `cascade`; private cross-repository packages still
+  require an authorized dedicated token or GitHub App.
+
 ### Changed
 
 - **BREAKING:** gh-aw's shared `apm.md` import now requires an explicit
   `target` and no longer defaults to the manifest-invalid `all`. Re-vendor
   `.github/workflows/shared/apm.md`, set `target: copilot` (or the target
   matching your workflow engine), then recompile.
-
-### Fixed
-
-- gh-aw's shared APM job now grants its built-in `GITHUB_TOKEN` read-only
-  contents access, making the documented fallback usable for private packages
-  in the current repository. Private cross-repository packages still require a
-  dedicated token or GitHub App.
 
 ### Security
 

@@ -909,6 +909,54 @@ jobs:
           owner: ${{ matrix.group.owner != '' && matrix.group.owner || github.repository_owner }}
           private-key: ${{ env.ROW_PRIVATE_KEY }}
           repositories: ${{ matrix.group.repositories }}
+      - name: Select APM package token
+        id: package-token
+        run: |
+          set -euo pipefail
+          case "$ROW_TOKEN_SOURCE" in
+            github-token)
+              selected=${BUILTIN_TOKEN:-}
+              tier=github-token
+              ;;
+            app)
+              selected=${APP_TOKEN:-}
+              tier=app
+              ;;
+            cascade)
+              selected=${CASCADE_TOKEN:-}
+              if [ "${HAS_PLUGINS_TOKEN:-false}" = "true" ]; then
+                tier=cascade:GH_AW_PLUGINS_TOKEN
+              elif [ "${HAS_GH_AW_TOKEN:-false}" = "true" ]; then
+                tier=cascade:GH_AW_GITHUB_TOKEN
+              else
+                tier=cascade:GITHUB_TOKEN
+              fi
+              ;;
+            *)
+              echo "::error::unexpected APM token source '$ROW_TOKEN_SOURCE'"
+              exit 1
+              ;;
+          esac
+          if [ -z "$selected" ]; then
+            echo "::error::selected APM token source '$ROW_TOKEN_SOURCE' is unavailable"
+            exit 1
+          fi
+          case "$selected" in
+            *$'\n'*|*$'\r'*)
+              echo "::error::selected APM token must be a single line"
+              exit 1
+              ;;
+          esac
+          echo "::notice::APM package token source: $tier"
+          echo "::add-mask::$selected"
+          printf 'token=%s\n' "$selected" >> "$GITHUB_OUTPUT"
+        env:
+          APP_TOKEN: ${{ matrix.group.token-source == 'app' && steps.token.outputs.token || '' }}
+          BUILTIN_TOKEN: ${{ matrix.group.token-source == 'github-token' && github.token || '' }}
+          CASCADE_TOKEN: ${{ matrix.group.token-source == 'cascade' && secrets.GH_AW_PLUGINS_TOKEN || matrix.group.token-source == 'cascade' && secrets.GH_AW_GITHUB_TOKEN || matrix.group.token-source == 'cascade' && secrets.GITHUB_TOKEN || '' }}
+          HAS_GH_AW_TOKEN: ${{ matrix.group.token-source == 'cascade' && secrets.GH_AW_GITHUB_TOKEN != '' }}
+          HAS_PLUGINS_TOKEN: ${{ matrix.group.token-source == 'cascade' && secrets.GH_AW_PLUGINS_TOKEN != '' }}
+          ROW_TOKEN_SOURCE: ${{ matrix.group.token-source }}
       - name: Render package list
         id: list
         run: |
@@ -924,7 +972,9 @@ jobs:
         id: pack
         uses: microsoft/apm-action@d723bb64ed70c135bbaf87d126b721dd2dae0439 # v1.10.0
         env:
-          GITHUB_TOKEN: ${{ steps.token.outputs.token || secrets.GH_AW_PLUGINS_TOKEN || secrets.GH_AW_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.package-token.outputs.token }}
+          GITHUB_APM_PAT: ${{ steps.package-token.outputs.token }}
+          GITHUB_TOKEN: ${{ steps.package-token.outputs.token }}
         with:
           apm-version: 0.21.0
           archive: "true"
@@ -977,6 +1027,19 @@ jobs:
           done
         env:
           AW_APM_TARGET: copilot
+      - name: Validate APM token source
+        run: |
+          set -euo pipefail
+          token_source=${AW_APM_TOKEN_SOURCE:-cascade}
+          case "$token_source" in
+            cascade|github-token) ;;
+            *)
+              echo "::error::invalid token-source '$token_source'; expected cascade or github-token"
+              exit 1
+              ;;
+          esac
+        env:
+          AW_APM_TOKEN_SOURCE: cascade
       - name: Compute APM credential-group matrix
         id: compute
         run: |
@@ -984,6 +1047,7 @@ jobs:
           packages_json=${AW_APM_PACKAGES:-null}
           apps_json=${AW_APM_APPS:-null}
           legacy_id=${AW_APM_LEGACY_APP_ID:-}
+          token_source=${AW_APM_TOKEN_SOURCE:-cascade}
 
           # gh-aw substitutes `["microsoft/apm#main"]` at
           # compile time using Go's default slice formatter, which emits
@@ -1011,15 +1075,16 @@ jobs:
             --arg legacy_id "$legacy_id" \
             --arg legacy_owner "${AW_APM_LEGACY_OWNER:-}" \
             --arg legacy_repos "${AW_APM_LEGACY_REPOS:-}" \
+            --arg token_source "$token_source" \
             'def slug(s): s | gsub("[^a-zA-Z0-9-]"; "-") | ascii_downcase | .[0:32];
              def with_id(g):
                g + (if (g.id // "") == "" then {id: ("auto-" + slug(g.owner // "default"))} else {} end);
              [
                (if (($packages // []) | length) > 0 and $legacy_id == ""
-                  then [{id:"default",kind:"default",index:0,owner:"",repositories:"",packages:$packages,("has-app"):"false"}]
+                  then [{id:"default",kind:"default",index:0,owner:"",repositories:"",packages:$packages,("has-app"):"false",("token-source"):$token_source}]
                   else [] end),
                (if $legacy_id != ""
-                  then [with_id({id:"legacy",kind:"legacy",index:0,owner:$legacy_owner,repositories:$legacy_repos,packages:($packages // []),("has-app"):"true"})]
+                  then [with_id({id:"legacy",kind:"legacy",index:0,owner:$legacy_owner,repositories:$legacy_repos,packages:($packages // []),("has-app"):"true",("token-source"):"app"})]
                   else [] end),
                (($apps // []) | to_entries | map(
                   with_id({
@@ -1029,7 +1094,8 @@ jobs:
                     owner: (.value.owner // ""),
                     repositories: (.value.repositories // ""),
                     packages: (.value.packages // []),
-                    ("has-app"): "true"
+                    ("has-app"): "true",
+                    ("token-source"): "app"
                   })))
              ] | add // []')
 
@@ -1066,6 +1132,7 @@ jobs:
           AW_APM_LEGACY_OWNER: ${{ github.aw.import-inputs.owner }}
           AW_APM_LEGACY_REPOS: ${{ github.aw.import-inputs.repositories }}
           AW_APM_PACKAGES: "[microsoft/apm#main]"
+          AW_APM_TOKEN_SOURCE: cascade
 
   conclusion:
     needs:
