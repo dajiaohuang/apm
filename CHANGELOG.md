@@ -13,14 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the built-in token read-only contents access, allowing consumers to opt into
   the current-repository identity instead of a configured cascade token. The
   compatible default remains `cascade`; private cross-repository packages still
-  require an authorized dedicated token or GitHub App.
+  require an authorized dedicated token or GitHub App. (#2706)
 
 ### Changed
 
 - **BREAKING:** gh-aw's shared `apm.md` import now requires an explicit
   `target` and no longer defaults to the manifest-invalid `all`. Re-vendor
   `.github/workflows/shared/apm.md`, set `target: copilot` (or the target
-  matching your workflow engine), then recompile.
+  matching your workflow engine), then recompile. (#2706)
 
 ### Security
 
@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   patterns can now surface violations in a passing install or audit. Lowercase
   policy entries remain compatible through APM 0.29.0; remove temporary
   duplicates only after every runner uses the first newer release whose notes
-  include this fix.
+  include this fix. (#2706)
 
 ## [0.29.0] - 2026-08-26
 
