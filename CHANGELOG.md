@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING:** gh-aw's shared `apm.md` import now requires an explicit
+  `target` and no longer defaults to the manifest-invalid `all`. Re-vendor
+  `.github/workflows/shared/apm.md`, set `target: copilot` (or the target
+  matching your workflow engine), then recompile.
+
+### Fixed
+
+- gh-aw's shared APM job now grants its built-in `GITHUB_TOKEN` read-only
+  contents access, making the documented fallback usable for private packages
+  in the current repository. Private cross-repository packages still require a
+  dedicated token or GitHub App.
+
+### Security
+
+- Dependency policy `allow`, `deny`, and exact `require` matching now follows
+  canonical casing for unambiguous owner/repository prefixes, preventing
+  mixed-case patterns such as `DevExpGbb/**` from blocking required packages
+  or letting matching denied packages through. Previously ineffective deny
+  patterns can now surface violations in a passing install or audit. Lowercase
+  policy entries remain compatible through APM 0.29.0; remove temporary
+  duplicates only after every runner uses the first newer release whose notes
+  include this fix.
+
 ## [0.29.0] - 2026-08-26
 
 ### Added

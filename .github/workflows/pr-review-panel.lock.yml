@@ -825,7 +825,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJSON(needs.apm-prep.outputs.matrix) }}
     permissions:
-      {}
+      contents: read
 
     env:
       AW_APM_APPS: ${{ github.aw.import-inputs.apps }}
@@ -959,6 +959,24 @@ jobs:
           GH_HOST="${GITHUB_SERVER_URL#https://}"
           GH_HOST="${GH_HOST#http://}"
           echo "GH_HOST=${GH_HOST}" >> "$GITHUB_ENV"
+      - name: Validate APM target
+        run: |
+          set -euo pipefail
+          raw_target=${AW_APM_TARGET:-}
+          if [ -z "$(printf '%s' "$raw_target" | tr -d '[:space:]')" ]; then
+            echo "::error::shared/apm.md requires a non-empty target matching the workflow engine"
+            exit 1
+          fi
+          IFS=',' read -ra requested_targets <<< "$raw_target"
+          for requested in "${requested_targets[@]}"; do
+            normalized=$(printf '%s' "$requested" | tr -d '[:space:]' | tr 'A-Z' 'a-z')
+            if [ "$normalized" = "all" ]; then
+              echo "::error::target 'all' is CLI-only and cannot be written to the isolated apm.yml; set a target matching the workflow engine"
+              exit 1
+            fi
+          done
+        env:
+          AW_APM_TARGET: copilot
       - name: Compute APM credential-group matrix
         id: compute
         run: |
@@ -1393,4 +1411,3 @@ jobs:
           name: safe-output-items
           path: /tmp/gh-aw/safe-output-items.jsonl
           if-no-files-found: ignore
-

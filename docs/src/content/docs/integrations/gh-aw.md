@@ -32,6 +32,7 @@ engine: copilot
 imports:
   - uses: shared/apm.md
     with:
+      target: copilot
       packages:
         - microsoft/apm-sample-package
         - github/awesome-copilot/skills/review-and-refactor
@@ -59,24 +60,27 @@ The per-primitive path form is what makes `github/awesome-copilot/skills/review-
 2. The `apm` job runs `microsoft/apm-action` to install packages and uploads a bundle archive as a GitHub Actions artifact.
 3. The agent job downloads and unpacks the bundle as pre-steps, making all primitives available at runtime.
 
-The APM compilation target is automatically inferred from the configured `engine:` field (`copilot`, `claude`, or `all` for other engines). No manual target configuration is needed.
+Set the required `target:` input to the APM target that matches `engine:`. This is the only target signal: the shared workflow runs `apm-action` in isolated mode and intentionally ignores any `apm.yml` in the consumer repository. For example, use `target: copilot` with `engine: copilot`. Do not pass `all`; it is a CLI-only flag, not an `apm.yml` target.
 
-Packages are fetched using gh-aw's cascading token fallback: `GH_AW_PLUGINS_TOKEN` -> `GH_AW_GITHUB_TOKEN` -> `GITHUB_TOKEN`.
+Packages are fetched using gh-aw's cascading token fallback: `GH_AW_PLUGINS_TOKEN` -> `GH_AW_GITHUB_TOKEN` -> `GITHUB_TOKEN`. The shared `apm` job grants the built-in `GITHUB_TOKEN` only `contents: read`, which supports private package paths in the current repository but not other private repositories. For private cross-repository packages, configure `GH_AW_PLUGINS_TOKEN`, `GH_AW_GITHUB_TOKEN`, or GitHub App credentials.
 
 **Pinning the apm CLI version (optional):**
 
-By default the import installs the apm CLI version that the pinned `microsoft/apm-action` ships. To install a specific version instead -- for example to opt into a newer CLI for a packaging fix -- set the optional `apm-version` input. It is threaded into both the pack and restore steps so the version cannot skew between them, and it survives `gh aw update` (no need to hand-edit the vendored `shared/apm.md`):
+By default the import installs the apm CLI version pinned as `shared/apm.md`'s own default. To install a specific version instead -- for example to opt into a newer CLI for a packaging fix -- set the optional `apm-version` input. It is threaded into both the pack and restore steps so the version cannot skew between them, and it survives `gh aw update` (no need to hand-edit the vendored `shared/apm.md`):
 
 ```yaml
 imports:
   - uses: shared/apm.md
     with:
-      apm-version: '0.20.0'
+      apm-version: '0.21.0'
+      target: copilot
       packages:
         - microsoft/apm-sample-package
 ```
 
-Use a bare semver tag (e.g. `'0.20.0'`). Pass `'latest'` to opt into floating to the newest release; omit the input entirely to keep the action's pinned default.
+Use a bare semver tag (e.g. `'0.21.0'`). Pass `'latest'` to opt into floating to the newest release; omit the input entirely to keep the workflow's pinned default.
+
+If your vendored `shared/apm.md` came from APM v0.10.0, replace it with the canonical file and add `target:` before recompiling. That version uses `microsoft/apm-action@v1.4.2`, whose target input applies only to packing and does not reach the isolated `apm install`; no import input can repair that pair.
 
 :::note[Isolated install by default]
 `shared/apm.md` invokes `microsoft/apm-action` with `isolated: true`. Only the packages listed under `packages:` are installed -- any host-repo primitives under `.apm/` or `.github/` (instructions, prompts, skills, agents) are ignored and pre-existing primitive directories are cleared. To merge host-repo primitives with imported ones, use the [apm-action Pre-Step](#apm-action-pre-step) approach below, which leaves `isolated` at its default of `false`.
@@ -95,6 +99,7 @@ To get the canonical version with multi-org GitHub App auth (`apps:`) and multi-
 mkdir -p .github/workflows/shared
 curl -sSL https://raw.githubusercontent.com/microsoft/apm/main/.github/workflows/shared/apm.md \
   > .github/workflows/shared/apm.md
+gh aw compile
 ```
 
 Check whether your vendored copy is current by comparing the `Source of truth:` and `apm-action pin:` lines near the top of the file with the canonical copy linked above.

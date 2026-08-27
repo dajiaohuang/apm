@@ -15,13 +15,14 @@
 #
 # Documentation: https://microsoft.github.io/apm/integrations/gh-aw/
 #
-# Three user-facing forms (all valid, additive):
+# User-facing forms:
 #
 # 1. Public + default-token packages (no App credentials):
 #
 #    imports:
 #      - uses: shared/apm.md
 #        with:
+#          target: copilot
 #          packages:
 #            - microsoft/apm-sample-package
 #            - github/awesome-copilot/skills/review-and-refactor
@@ -31,6 +32,7 @@
 #    imports:
 #      - uses: shared/apm.md
 #        with:
+#          target: copilot
 #          app-id: ${{ vars.APP_ID }}
 #          private-key: ${{ secrets.APP_PRIVATE_KEY }}
 #          owner: my-org
@@ -42,6 +44,7 @@
 #    imports:
 #      - uses: shared/apm.md
 #        with:
+#          target: copilot
 #          packages:
 #            - microsoft/apm-sample-package
 #          apps:
@@ -84,10 +87,11 @@ import-schema:
       type: string
     required: false
     description: >
-      Public APM packages or packages reachable via the default token cascade
-      (GH_AW_PLUGINS_TOKEN, GH_AW_GITHUB_TOKEN, GITHUB_TOKEN). Optional. At
-      least one of `packages`, the single-app inputs, or `apps` must be provided.
-      Format: owner/repo or owner/repo/path/to/skill.
+      Public APM packages, private packages in the current repository reachable
+      by its read-only GITHUB_TOKEN, or cross-repository packages reachable via
+      GH_AW_PLUGINS_TOKEN or GH_AW_GITHUB_TOKEN. Optional. At least one of
+      `packages`, the single-app inputs, or `apps` must be provided. Format:
+      owner/repo or owner/repo/path/to/skill.
 
   # Single-app convenience form (canonical shorthand for one-org users)
   app-id:
@@ -156,17 +160,15 @@ import-schema:
   # APM compilation target (which agent harness layouts to deploy)
   target:
     type: string
-    required: false
-    default: all
+    required: true
     description: >
-      Target harness(es) for APM compilation. Controls which agent config
-      directories are generated in the bundle. Single token or comma-separated
-      list. Valid tokens: copilot, claude, cursor, codex, opencode, gemini,
-      windsurf, agent-skills, all. Default: all (every supported harness).
-      Set this to match the engine your gh-aw workflow targets for smaller,
-      faster bundles. The shared workflow runs apm-action in isolated mode,
-      so any apm.yml in the consumer repo is intentionally ignored -- this
-      input is the sole target signal.
+      Required target harness for APM compilation. Set this to the apm.yml
+      target matching the gh-aw engine (for example, copilot, claude, or
+      codex). A comma-separated list is accepted for multi-target workflows.
+      The value 'all' is not valid here: it is a CLI-only flag, not an apm.yml
+      target. The shared workflow runs apm-action in isolated mode, so any
+      apm.yml in the consumer repo is intentionally ignored and this input is
+      the sole target signal.
 
   # apm CLI version (overrides apm-action's pinned default)
   apm-version:
@@ -199,6 +201,24 @@ jobs:
     outputs:
       matrix: ${{ steps.compute.outputs.matrix }}
     steps:
+      - name: Validate APM target
+        env:
+          AW_APM_TARGET: ${{ github.aw.import-inputs.target }}
+        run: |
+          set -euo pipefail
+          raw_target=${AW_APM_TARGET:-}
+          if [ -z "$(printf '%s' "$raw_target" | tr -d '[:space:]')" ]; then
+            echo "::error::shared/apm.md requires a non-empty target matching the workflow engine"
+            exit 1
+          fi
+          IFS=',' read -ra requested_targets <<< "$raw_target"
+          for requested in "${requested_targets[@]}"; do
+            normalized=$(printf '%s' "$requested" | tr -d '[:space:]' | tr 'A-Z' 'a-z')
+            if [ "$normalized" = "all" ]; then
+              echo "::error::target 'all' is CLI-only and cannot be written to the isolated apm.yml; set a target matching the workflow engine"
+              exit 1
+            fi
+          done
       # SECURITY (S3): the matrix written to $GITHUB_OUTPUT below carries
       # NO secret values -- only routing metadata (id, kind, index, owner,
       # repositories, packages, has-app). Credentials are resolved per-row
@@ -301,7 +321,8 @@ jobs:
   apm:
     runs-on: ubuntu-slim
     needs: [activation, apm-prep]
-    permissions: {}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.apm-prep.outputs.matrix) }}
@@ -516,7 +537,7 @@ job's pre-agent-steps then download all bundles and restore them in a single
 
 Three forms, additive:
 
-- No App credentials: packages fetched via `GH_AW_PLUGINS_TOKEN || GH_AW_GITHUB_TOKEN || GITHUB_TOKEN`.
+- No App credentials: packages fetched via `GH_AW_PLUGINS_TOKEN || GH_AW_GITHUB_TOKEN || GITHUB_TOKEN`. The built-in `GITHUB_TOKEN` has read access only to the current repository; private cross-repository packages require one of the first two secrets or App credentials.
 - Single App (top-level `app-id` + `private-key` + `owner` + `repositories`):
   one installation token mints for one credential group; canonical shorthand for
   one-org users.
