@@ -9,29 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- gh-aw's shared APM import now supports `token-source: github-token` and grants
-  the built-in token read-only contents access, allowing consumers to opt into
-  the current-repository identity instead of a configured cascade token. The
-  compatible default remains `cascade`; private cross-repository packages still
-  require an authorized dedicated token or GitHub App. (#2706)
+- gh-aw's shared APM import now supports `token-source: github-token` with read-only current-repository access; `cascade` remains the default, and private cross-repository packages still require a dedicated token or GitHub App. (#2706)
 
 ### Changed
 
-- **BREAKING:** gh-aw's shared `apm.md` import now requires an explicit
-  `target` and no longer defaults to the manifest-invalid `all`. Re-vendor
-  `.github/workflows/shared/apm.md`, set `target: copilot` (or the target
-  matching your workflow engine), then recompile. (#2706)
+- **BREAKING:** gh-aw's shared `apm.md` import now requires an explicit `target` instead of manifest-invalid `all`; re-vendor the file, set the workflow engine's target, and recompile. (#2706)
 
 ### Security
 
-- Dependency policy `allow`, `deny`, and exact `require` matching now follows
-  canonical casing for unambiguous owner/repository prefixes, preventing
-  mixed-case patterns such as `DevExpGbb/**` from blocking required packages
-  or letting matching denied packages through. Previously ineffective deny
-  patterns can now surface violations in a passing install or audit. Lowercase
-  policy entries remain compatible through APM 0.29.0; remove temporary
-  duplicates only after every runner uses the first newer release whose notes
-  include this fix. (#2706)
+- Dependency policy `allow`, `deny`, and exact `require` matching now follows canonical owner/repository casing, fixing mixed-case blocks and deny fail-open behavior; lowercase workarounds remain compatible through APM 0.29.0 and should be removed only after every runner uses the first newer release containing this fix. (#2706)
 
 ## [0.29.0] - 2026-08-26
 
