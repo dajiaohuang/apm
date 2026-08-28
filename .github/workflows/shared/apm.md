@@ -180,10 +180,10 @@ import-schema:
       Required target harness for APM compilation. Set this to the apm.yml
       target matching the gh-aw engine (for example, copilot, claude, or
       codex). A comma-separated list is accepted for multi-target workflows.
-      The value 'all' is not valid here: it is a CLI-only flag, not an apm.yml
-      target. The shared workflow runs apm-action in isolated mode, so any
-      apm.yml in the consumer repo is intentionally ignored and this input is
-      the sole target signal.
+      The deprecated value 'all' is not accepted here: apm-action writes it to
+      the isolated apm.yml, where it degrades to auto-detection in a workspace
+      with no harness markers. The shared workflow intentionally ignores any
+      apm.yml in the consumer repo, so this input is the sole target signal.
 
   # apm CLI version (overrides apm-action's pinned default)
   apm-version:
@@ -198,12 +198,12 @@ import-schema:
     # them, and apm-action restores whatever format it detects. The binding
     # contract (verify-shared-apm-matrix Job C) is that the format THIS
     # version produces is in the pinned apm-action's detected set. Keep it on
-    # the repo's current CLI line so the default path exercises the shipped
-    # pack format.
-    default: '0.21.0'
+    # the latest published release validated by Job C so the default path
+    # exercises a release consumers can install.
+    default: '0.28.0'
     description: >
       apm CLI version for apm-action to install, as a bare semver tag (e.g.
-      '0.21.0'); pass 'latest' to opt into floating to the newest release.
+      '0.28.0'); pass 'latest' to opt into floating to the newest release.
       Omit to use this workflow's pinned default. Applied to both the Pack
       and Restore apm-action steps so the CLI version cannot skew between
       packing and restoring.
@@ -230,7 +230,7 @@ jobs:
           for requested in "${requested_targets[@]}"; do
             normalized=$(printf '%s' "$requested" | tr -d '[:space:]' | tr 'A-Z' 'a-z')
             if [ "$normalized" = "all" ]; then
-              echo "::error::target 'all' is CLI-only and cannot be written to the isolated apm.yml; set a target matching the workflow engine"
+              echo "::error::target 'all' degrades to auto-detection in the isolated apm.yml; set a concrete target matching the workflow engine"
               exit 1
             fi
           done
@@ -433,7 +433,7 @@ jobs:
       - name: Mint installation token
         id: token
         if: ${{ matrix.group.has-app == 'true' }}
-        uses: actions/create-github-app-token@v3.1.1
+        uses: actions/create-github-app-token@v3.2.0
         with:
           app-id: ${{ env.ROW_APP_ID }}
           private-key: ${{ env.ROW_PRIVATE_KEY }}
@@ -520,7 +520,7 @@ jobs:
           working-directory: /tmp/gh-aw/apm-workspace
       - name: Upload APM bundle artifact
         if: success()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ${{ needs.activation.outputs.artifact_prefix }}apm-${{ matrix.group.id }}
           path: ${{ steps.pack.outputs.bundle-path }}
@@ -622,7 +622,7 @@ job's pre-agent-steps then download all bundles and restore them in a single
 
 ### Authentication
 
-Three forms, additive:
+Credential forms, additive:
 
 - No App credentials, `token-source: cascade` (default): packages fetched via `GH_AW_PLUGINS_TOKEN || GH_AW_GITHUB_TOKEN || GITHUB_TOKEN`.
 - No App credentials, `token-source: github-token`: packages fetched only with the ephemeral built-in `GITHUB_TOKEN`. It has read access only to the current repository; private cross-repository packages require `cascade` with an authorized token or App credentials.

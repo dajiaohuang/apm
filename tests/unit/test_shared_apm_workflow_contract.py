@@ -14,9 +14,17 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 SHARED_APM = ROOT / ".github" / "workflows" / "shared" / "apm.md"
 VERIFY_SHARED_APM = ROOT / ".github" / "workflows" / "verify-shared-apm-matrix.yml"
+GH_AW_GUIDE = ROOT / "docs" / "src" / "content" / "docs" / "integrations" / "gh-aw.md"
+GH_AW_ACTIONS_LOCK = ROOT / ".github" / "aw" / "actions-lock.json"
+GH_AW_MAINTENANCE = ROOT / ".github" / "workflows" / "agentics-maintenance.yml"
+COPILOT_SETUP = ROOT / ".github" / "workflows" / "copilot-setup-steps.yml"
 TARGET_EXPRESSION = "${{ github.aw.import-inputs.target }}"
 PACK_TOKEN_OUTPUT = "${{ steps.package-token.outputs.token }}"
 APM_ACTION_SHA = "d723bb64ed70c135bbaf87d126b721dd2dae0439"
+DEFAULT_APM_VERSION = "0.28.0"
+GH_AW_VERSION = "v0.87.8"
+GH_AW_TAG_COMMIT = "e973b8cc974ce0b3628a8f9759b40733b4bf146b"
+GH_AW_ACTION_SHA = "1aa033c7bf25ac9428fe521065b90c30a7070c4e"
 BUILTIN_TOKEN = "${{ matrix.group.token-source == 'github-token' && github.token || '' }}"
 APP_TOKEN = "${{ matrix.group.token-source == 'app' && steps.token.outputs.token || '' }}"
 CASCADE_TOKEN = (
@@ -89,6 +97,7 @@ def _shared_apm_consumers() -> list[tuple[Path, dict]]:
         for imported in loaded.get("imports", ()):
             if imported.get("uses") == "shared/apm.md":
                 consumers.append((path, imported))
+    assert consumers, "no shared/apm.md consumers discovered -- import syntax changed"
     return consumers
 
 
@@ -167,7 +176,7 @@ def test_shared_apm_requires_an_explicit_target_without_a_default() -> None:
     assert target["type"] == "string"
     assert target["required"] is True
     assert "default" not in target
-    assert "The value 'all' is not valid here" in target["description"]
+    assert "The deprecated value 'all' is not accepted here" in target["description"]
 
 
 def test_shared_apm_token_source_defaults_to_compatible_cascade() -> None:
@@ -188,6 +197,26 @@ def test_shared_apm_forwards_the_target_to_the_isolated_pack_action() -> None:
     assert pack["with"]["target"] == TARGET_EXPRESSION
 
 
+def test_shared_apm_runtime_default_is_consistent() -> None:
+    frontmatter = _frontmatter()
+    version_input = frontmatter["import-schema"]["apm-version"]
+    assert version_input["default"] == DEFAULT_APM_VERSION
+
+    source_action_steps = [
+        step
+        for step in (*frontmatter["jobs"]["apm"]["steps"], *frontmatter["steps"])
+        if step.get("uses") == "microsoft/apm-action@v1.10.0"
+    ]
+    assert len(source_action_steps) == 2
+    assert {step["with"]["apm-version"] for step in source_action_steps} == {
+        "${{ github.aw.import-inputs.apm-version }}"
+    }
+
+    guide = GH_AW_GUIDE.read_text(encoding="utf-8")
+    assert "installs APM 0.28.0" in guide
+    assert "apm-version: '0.28.0'" in guide
+
+
 def test_verify_workflow_exercises_apm_028_pack_and_multibundle_restore() -> None:
     workflow = yaml.safe_load(VERIFY_SHARED_APM.read_text(encoding="utf-8"))
     job = workflow["jobs"]["c-apm-028-action-compat"]
@@ -197,7 +226,9 @@ def test_verify_workflow_exercises_apm_028_pack_and_multibundle_restore() -> Non
     restore = next(step for step in action_steps if "bundles-file" in step.get("with", {}))
 
     assert len(packs) == 2
-    assert {step["with"]["apm-version"] for step in action_steps} == {"0.28.0"}
+    assert {step["with"]["apm-version"] for step in action_steps} == {
+        _frontmatter()["import-schema"]["apm-version"]["default"]
+    }
     assert {step["with"]["target"] for step in packs} == {"copilot", "claude"}
     assert all(step["with"]["isolated"] == "true" for step in packs)
     assert all(step["with"]["archive"] == "true" for step in packs)
@@ -542,6 +573,84 @@ def test_compiled_consumer_locks_carry_target_validation() -> None:
         assert "AW_APM_TARGET:" in source, lock.name
         assert compiled["jobs"]["apm-prep"]["permissions"] == {}
         assert compiled["jobs"]["apm"]["permissions"] == {"contents": "read"}
+
+
+def test_compiled_consumers_pin_the_shared_runtime_default() -> None:
+    for path, _imported in _shared_apm_consumers():
+        lock = yaml.safe_load(path.with_suffix(".lock.yml").read_text(encoding="utf-8"))
+        action_steps = [
+            step
+            for job in lock["jobs"].values()
+            for step in job.get("steps", ())
+            if step.get("uses") == f"microsoft/apm-action@{APM_ACTION_SHA}"
+        ]
+        assert len(action_steps) == 2, path.name
+        assert {step["with"]["apm-version"] for step in action_steps} == {DEFAULT_APM_VERSION}, (
+            path.name
+        )
+
+
+def test_repository_pins_exact_gh_aw_compiler_and_generated_locks() -> None:
+    action_ref = f"github/gh-aw-actions/setup-cli@{GH_AW_ACTION_SHA}"
+
+    setup = yaml.safe_load(COPILOT_SETUP.read_text(encoding="utf-8"))
+    setup_step = next(
+        step
+        for step in setup["jobs"]["copilot-setup-steps"]["steps"]
+        if step.get("name") == "Install gh-aw extension"
+    )
+    assert setup_step["uses"] == action_ref
+    assert setup_step["with"]["version"] == GH_AW_VERSION
+    assert GH_AW_TAG_COMMIT in COPILOT_SETUP.read_text(encoding="utf-8")
+
+    maintenance_source = GH_AW_MAINTENANCE.read_text(encoding="utf-8")
+    maintenance = yaml.safe_load(maintenance_source)
+    install_steps = [
+        step
+        for job in maintenance["jobs"].values()
+        for step in job.get("steps", ())
+        if step.get("name") == "Install gh-aw"
+    ]
+    assert install_steps
+    assert {step["uses"] for step in install_steps} == {action_ref}
+    assert {step["with"]["version"] for step in install_steps} == {GH_AW_VERSION}
+    assert not re.search(r"setup-cli@(?![0-9a-f]{40})", maintenance_source)
+
+    actions_lock = json.loads(GH_AW_ACTIONS_LOCK.read_text(encoding="utf-8"))
+    locked_setup = actions_lock["entries"][f"github/gh-aw-actions/setup@{GH_AW_VERSION}"]
+    assert locked_setup["sha"] == GH_AW_ACTION_SHA
+    assert "containers" not in actions_lock
+
+    agent_source = (ROOT / ".apm" / "agents" / "agentic-workflows.agent.md").read_text(
+        encoding="utf-8"
+    )
+    assert f"--pin {GH_AW_VERSION} --force" in agent_source
+    assert GH_AW_TAG_COMMIT in agent_source
+    assert "Use `--approve` only after" in agent_source
+
+    workflows = ROOT / ".github" / "workflows"
+    sources = sorted(workflows.glob("*.md"))
+    for source in sources:
+        lock = source.with_suffix(".lock.yml")
+        first_line = lock.read_text(encoding="utf-8").splitlines()[0]
+        metadata = json.loads(first_line.removeprefix("# gh-aw-metadata: "))
+        assert metadata["compiler_version"] == GH_AW_VERSION, source.name
+
+
+def test_agentic_workflows_agent_is_deployed_verbatim() -> None:
+    source = (ROOT / ".apm" / "agents" / "agentic-workflows.agent.md").read_text(
+        encoding="utf-8"
+    )
+    deployed = (ROOT / ".github" / "agents" / "agentic-workflows.agent.md").read_text(
+        encoding="utf-8"
+    )
+    assert deployed == source
+
+
+def test_repository_apm_lock_omits_host_compiled_artifacts() -> None:
+    lock = (ROOT / "apm.lock.yaml").read_text(encoding="utf-8")
+    assert "__pycache__" not in lock
+    assert not re.search(r"\.pyc(?:\s|$)", lock)
 
 
 def test_compiled_locks_pin_every_external_action_by_sha() -> None:

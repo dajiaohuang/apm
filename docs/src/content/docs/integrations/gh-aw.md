@@ -60,7 +60,7 @@ The per-primitive path form is what makes `github/awesome-copilot/skills/review-
 2. The `apm` job runs `microsoft/apm-action` to install packages and uploads a bundle archive as a GitHub Actions artifact.
 3. The agent job downloads and unpacks the bundle as pre-steps, making all primitives available at runtime.
 
-Set the required `target:` input to the APM target that matches `engine:`. This is the only target signal: the shared workflow runs `apm-action` in isolated mode and intentionally ignores any `apm.yml` in the consumer repository. For example, use `target: copilot` with `engine: copilot`. Do not pass `all`; it is a CLI-only flag, not an `apm.yml` target.
+Set the required `target:` input to the APM target that matches `engine:`. This is the only target signal: the shared workflow runs `apm-action` in isolated mode and intentionally ignores any `apm.yml` in the consumer repository. For example, use `target: copilot` with `engine: copilot`. Do not pass `all`: `apm-action` writes the value into the isolated `apm.yml`, where it is [deprecated](../../reference/manifest-schema/#36-target-and-targets) and degrades to auto-detection.
 
 For no-App rows, `token-source` selects the package credential:
 
@@ -69,37 +69,27 @@ For no-App rows, `token-source` selects the package credential:
 | `cascade` (default) | Uses the first configured value in `GH_AW_PLUGINS_TOKEN` -> `GH_AW_GITHUB_TOKEN` -> `GITHUB_TOKEN`. A configured token that is rejected does not silently fall through to another identity. |
 | `github-token` | Uses only the ephemeral built-in token and fails if that identity is unavailable instead of falling back. The shared `apm` job grants it `contents: read`, so it can read private package paths in the current repository but not other private repositories. |
 
-Use `token-source: github-token` when every private package in `packages:` is readable by the current repository token:
-
-```yaml
-imports:
-  - uses: shared/apm.md
-    with:
-      target: copilot
-      token-source: github-token
-      packages:
-        - your-org/current-repo/.apm/skills/private-skill
-```
-
-Private cross-repository packages require the default cascade with an authorized `GH_AW_PLUGINS_TOKEN` or `GH_AW_GITHUB_TOKEN`, or GitHub App credentials. App rows always use their minted installation token regardless of `token-source`.
+Use `token-source: github-token` when every private package in `packages:` is readable by the current repository token. Private cross-repository packages require the default cascade with an authorized `GH_AW_PLUGINS_TOKEN` or `GH_AW_GITHUB_TOKEN`, or GitHub App credentials. App rows always use their minted installation token regardless of `token-source`.
 
 **Pinning the apm CLI version (optional):**
 
-By default the import installs the apm CLI version pinned as `shared/apm.md`'s own default. To install a specific version instead -- for example to opt into a newer CLI for a packaging fix -- set the optional `apm-version` input. It is threaded into both the pack and restore steps so the version cannot skew between them, and it survives `gh aw update` (no need to hand-edit the vendored `shared/apm.md`):
+By default the import installs APM 0.28.0, the stable CLI version pinned by `shared/apm.md`. That version is action-tested with `microsoft/apm-action@v1.10.0` for explicit-target archive packing and multi-bundle restore. To pin the version explicitly, or install a different one, set the optional `apm-version` input. It is threaded into both the pack and restore steps so the version cannot skew between them, and it survives `gh aw update` (no need to hand-edit the vendored `shared/apm.md`):
 
 ```yaml
 imports:
   - uses: shared/apm.md
     with:
-      apm-version: '0.21.0'
+      apm-version: '0.28.0'
       target: copilot
       packages:
         - microsoft/apm-sample-package
 ```
 
-Use a bare semver tag (e.g. `'0.21.0'`). Pass `'latest'` to opt into floating to the newest release; omit the input entirely to keep the workflow's pinned default.
+Use a bare semver tag (e.g. `'0.28.0'`). Pass `'latest'` to opt into floating to the newest release; omit the input entirely to keep the workflow's pinned default.
 
-If your vendored `shared/apm.md` came from APM v0.10.0, replace it with the canonical file and add `target:` before recompiling. Add `token-source: github-token` when private packages come from the current repository. That version uses `microsoft/apm-action@v1.4.2`, whose target input applies only to packing and does not reach the isolated `apm install`; no import input can repair that pair.
+Copies vendored before this change default to APM 0.21.0, the repository's current CLI line when that default was selected. Re-vendoring moves the default to 0.28.0.
+
+If your vendored copy's `apm-action pin:` line reads `v1.4.2`, replace the file with the canonical copy and add `target:` before recompiling. Add `token-source: github-token` when private packages come from the current repository. That action version applies its target input only to packing and does not pass it to the isolated `apm install`; no import input can repair that pair.
 
 :::note[Isolated install by default]
 `shared/apm.md` invokes `microsoft/apm-action` with `isolated: true`. Only the packages listed under `packages:` are installed -- any host-repo primitives under `.apm/` or `.github/` (instructions, prompts, skills, agents) are ignored and pre-existing primitive directories are cleared. To merge host-repo primitives with imported ones, use the [apm-action Pre-Step](#apm-action-pre-step) approach below, which leaves `isolated` at its default of `false`.
@@ -122,6 +112,8 @@ gh aw compile
 ```
 
 Check whether your vendored copy is current by comparing the `Source of truth:` and `apm-action pin:` lines near the top of the file with the canonical copy linked above.
+
+Shared-workflow changes reach a consumer only after re-vendoring `shared/apm.md` and recompiling. CLI behavior changes, including [policy identity casing](../../reference/policy-schema/#identity-casing), additionally require a published CLI release and a runner upgrade.
 :::
 
 ### apm-action Pre-Step
