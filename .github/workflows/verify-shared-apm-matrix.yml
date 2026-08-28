@@ -477,6 +477,68 @@ jobs:
             exit 1
           fi
 
+  c-apm-028-action-compat:
+    name: C. APM 0.28 pack and multi-bundle restore
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pack Copilot bundle with APM 0.28
+        id: pack-copilot
+        uses: microsoft/apm-action@d723bb64ed70c135bbaf87d126b721dd2dae0439 # v1.10.0
+        with:
+          dependencies: |
+            - microsoft/apm-sample-package
+          isolated: 'true'
+          pack: 'true'
+          archive: 'true'
+          target: copilot
+          apm-version: '0.28.0'
+          working-directory: ${{ runner.temp }}/apm-028-pack-copilot
+
+      - name: Pack Claude bundle with APM 0.28
+        id: pack-claude
+        uses: microsoft/apm-action@d723bb64ed70c135bbaf87d126b721dd2dae0439 # v1.10.0
+        with:
+          dependencies: |
+            - microsoft/apm-sample-package
+          isolated: 'true'
+          pack: 'true'
+          archive: 'true'
+          target: claude
+          apm-version: '0.28.0'
+          working-directory: ${{ runner.temp }}/apm-028-pack-claude
+
+      - name: Build two-bundle restore list
+        id: bundle-list
+        env:
+          COPILOT_BUNDLE: ${{ steps.pack-copilot.outputs.bundle-path }}
+          CLAUDE_BUNDLE: ${{ steps.pack-claude.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          test -f "$COPILOT_BUNDLE"
+          test -f "$CLAUDE_BUNDLE"
+          list="${RUNNER_TEMP}/apm-028-bundles.txt"
+          printf '%s\n' "$COPILOT_BUNDLE" "$CLAUDE_BUNDLE" > "$list"
+          test "$(wc -l < "$list" | tr -d ' ')" = "2"
+          echo "path=$list" >> "$GITHUB_OUTPUT"
+
+      - name: Restore both APM 0.28 bundles
+        id: restore
+        uses: microsoft/apm-action@d723bb64ed70c135bbaf87d126b721dd2dae0439 # v1.10.0
+        with:
+          apm-version: '0.28.0'
+          bundles-file: ${{ steps.bundle-list.outputs.path }}
+          working-directory: ${{ runner.temp }}/apm-028-restore
+
+      - name: Assert two bundles restored
+        env:
+          BUNDLES_RESTORED: ${{ steps.restore.outputs.bundles-restored }}
+          RESTORE_ROOT: ${{ runner.temp }}/apm-028-restore
+        run: |
+          set -euo pipefail
+          test "$BUNDLES_RESTORED" = "2"
+          test -n "$(find "$RESTORE_ROOT" -type f -print -quit)"
+          echo "[+] APM 0.28 packed two explicit targets and restored both bundles."
+
   # =====================================================================
   # Job set D: apm pack archive-format <-> apm-action consumer detection.
   # Outage shape: GH-AW Compatibility job 'apm pack produced no bundle'.

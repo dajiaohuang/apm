@@ -13,8 +13,10 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 SHARED_APM = ROOT / ".github" / "workflows" / "shared" / "apm.md"
+VERIFY_SHARED_APM = ROOT / ".github" / "workflows" / "verify-shared-apm-matrix.yml"
 TARGET_EXPRESSION = "${{ github.aw.import-inputs.target }}"
 PACK_TOKEN_OUTPUT = "${{ steps.package-token.outputs.token }}"
+APM_ACTION_SHA = "d723bb64ed70c135bbaf87d126b721dd2dae0439"
 BUILTIN_TOKEN = "${{ matrix.group.token-source == 'github-token' && github.token || '' }}"
 APP_TOKEN = "${{ matrix.group.token-source == 'app' && steps.token.outputs.token || '' }}"
 CASCADE_TOKEN = (
@@ -184,6 +186,24 @@ def test_shared_apm_forwards_the_target_to_the_isolated_pack_action() -> None:
     assert pack["uses"] == "microsoft/apm-action@v1.10.0"
     assert pack["with"]["isolated"] == "true"
     assert pack["with"]["target"] == TARGET_EXPRESSION
+
+
+def test_verify_workflow_exercises_apm_028_pack_and_multibundle_restore() -> None:
+    workflow = yaml.safe_load(VERIFY_SHARED_APM.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["c-apm-028-action-compat"]
+    action_ref = f"microsoft/apm-action@{APM_ACTION_SHA}"
+    action_steps = [step for step in job["steps"] if step.get("uses") == action_ref]
+    packs = [step for step in action_steps if step.get("with", {}).get("pack") == "true"]
+    restore = next(step for step in action_steps if "bundles-file" in step.get("with", {}))
+
+    assert len(packs) == 2
+    assert {step["with"]["apm-version"] for step in action_steps} == {"0.28.0"}
+    assert {step["with"]["target"] for step in packs} == {"copilot", "claude"}
+    assert all(step["with"]["isolated"] == "true" for step in packs)
+    assert all(step["with"]["archive"] == "true" for step in packs)
+    assert restore["id"] == "restore"
+    assert restore["with"]["bundles-file"] == "${{ steps.bundle-list.outputs.path }}"
+    assert "steps.restore.outputs.bundles-restored" in VERIFY_SHARED_APM.read_text(encoding="utf-8")
 
 
 def test_shared_apm_fallback_token_has_current_repo_read_only() -> None:
