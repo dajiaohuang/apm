@@ -4181,6 +4181,20 @@ def test_dependency_policy_case_guard_rejects_parallel_lowercase(
     )
 
 
+def test_generated_python_artifact_membership_has_one_authority() -> None:
+    root = Path(__file__).parents[2]
+    owner = (root / "src/apm_cli/security/gate.py").read_text(encoding="utf-8")
+    inventory = (root / "src/apm_cli/install/deployed_paths.py").read_text(encoding="utf-8")
+    cleanup = (root / "src/apm_cli/integration/cleanup.py").read_text(encoding="utf-8")
+    guard = (root / "scripts/lint-architecture-boundaries.sh").read_text(encoding="utf-8")
+
+    assert "def is_generated_python_artifact(" in owner
+    assert "is_generated_python_artifact(Path(c))" in owner
+    assert "is_generated_python_artifact(relative)" in inventory
+    assert "is_generated_python_artifact(child.relative_to(skill_dir))" in cleanup
+    assert "AC35: generated Python artifact membership authority" in guard
+
+
 def test_git_auth_header_owner_guard_rejects_dictmerge_reintroduction(tmp_path: Path) -> None:
     """AC19 must reject a re-introduced dict-merge of the build_* overlay
     onto a populated env -- the exact #2368 clobber pattern.

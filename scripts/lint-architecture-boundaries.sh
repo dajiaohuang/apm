@@ -1931,6 +1931,21 @@ if ! python3 scripts/check_hash_visible_lf_writes.py; then
     violations=$((violations + 1))
 fi
 
+echo "[*] AC35: generated Python artifact membership authority"
+python_artifact_owner="src/apm_cli/security/gate.py"
+python_artifact_definitions=$(grep -rEc --include='*.py' \
+    '^def is_generated_python_artifact\(' src/apm_cli \
+    | awk -F: '{sum += $2} END {print sum + 0}')
+if [ "$python_artifact_definitions" -ne 1 ] \
+    || ! grep -q 'is_generated_python_artifact(Path(c))' "$python_artifact_owner" \
+    || ! grep -q 'is_generated_python_artifact(relative)' \
+        src/apm_cli/install/deployed_paths.py \
+    || ! grep -q 'is_generated_python_artifact(child.relative_to(skill_dir))' \
+        src/apm_cli/integration/cleanup.py; then
+    echo "[x] Python bytecode copy, inventory, and cleanup must share security/gate.py"
+    violations=$((violations + 1))
+fi
+
 echo "[*] AC18: bootstrap project-name authority"
 if ! uv run --extra dev python scripts/lint-bootstrap-project-name.py; then
     echo "[x] Manifest bootstrap names must route through core/project_name.py"

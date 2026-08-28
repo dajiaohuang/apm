@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from apm_cli.constants import DEFAULT_SKIP_DIRS
+from apm_cli.security.gate import is_generated_python_artifact
 from apm_cli.utils.path_security import PathTraversalError, ensure_path_within
 from apm_cli.utils.paths import portable_relpath
 
@@ -83,9 +83,7 @@ def skill_bundle_file_entries(
     for bundle_file in sorted(skill_dir.rglob("*")):
         try:
             relative = bundle_file.relative_to(skill_dir)
-            if any(part in DEFAULT_SKIP_DIRS for part in relative.parts):
-                continue
-            if relative.suffix in {".pyc", ".pyo"}:
+            if is_generated_python_artifact(relative):
                 continue
             if bundle_file.is_file() and not bundle_file.is_symlink():
                 entries.append(deployed_path_entry(bundle_file, project_root, targets))

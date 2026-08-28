@@ -38,6 +38,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from apm_cli.security.gate import is_generated_python_artifact
+
 from .base_integrator import BaseIntegrator
 
 
@@ -169,6 +171,8 @@ def _safe_remove_skill_directory(
             except ValueError:
                 child_rel = str(child.name)
             blocking.append(child_rel)
+            continue
+        if is_generated_python_artifact(child.relative_to(skill_dir)):
             continue
         if child.is_dir():
             continue
