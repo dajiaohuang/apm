@@ -366,7 +366,7 @@ Deny is evaluated first. Empty allow list permits all (except denied).
 
 Identity casing: `allow`, `deny`, and exact `require` match on each dependency's canonical identity. GitHub owner/repo identities, and registry-backed identities, compare case-insensitively (`Contoso/Repo` == `contoso/repo`). Non-GitHub git hosts, ADO, local paths, marketplace identities, virtual in-repo subpaths (after `owner/repo`), refs/version strings (after `#`), MCP names, and registry names stay case-sensitive. Use host-blind `owner/repo` patterns and put those segments before recursive `**`; later ambiguous literal segments remain case-sensitive. Deny takes precedence whenever a pattern matches.
 
-Mixed-case owner-prefix deny patterns that affected releases missed can surface new violations after upgrade. Lowercase policy entries remain compatible through APM 0.29.0; remove temporary duplicates only after every runner uses the first newer release whose notes include the casing fix.
+A mixed-case owner-prefix deny that older releases failed to match can correctly surface new violations after upgrade. Lowercase owner/repository patterns match before and after the fix; remove workaround duplicates only after every runner uses a release whose notes include the casing fix.
 
 ## Baseline checks (always run with --ci)
 

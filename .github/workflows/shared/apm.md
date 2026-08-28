@@ -178,12 +178,13 @@ import-schema:
     required: true
     description: >
       Required target harness for APM compilation. Set this to the apm.yml
-      target matching the gh-aw engine (for example, copilot, claude, or
-      codex). A comma-separated list is accepted for multi-target workflows.
-      The deprecated value 'all' is not accepted here: apm-action writes it to
-      the isolated apm.yml, where it degrades to auto-detection in a workspace
-      with no harness markers. The shared workflow intentionally ignores any
-      apm.yml in the consumer repo, so this input is the sole target signal.
+      target matching the gh-aw engine: copilot, claude, cursor, codex,
+      opencode, gemini, windsurf, or agent-skills. A comma-separated list is
+      accepted for multi-target workflows. The deprecated value 'all' is not
+      accepted here: apm-action writes it to the isolated apm.yml, where it
+      degrades to auto-detection in a workspace with no harness markers. The
+      shared workflow intentionally ignores any apm.yml in the consumer repo,
+      so this input is the sole target signal.
 
   # apm CLI version (overrides apm-action's pinned default)
   apm-version:
@@ -475,7 +476,17 @@ jobs:
               ;;
           esac
           if [ -z "$selected" ]; then
-            echo "::error::selected APM token source '$ROW_TOKEN_SOURCE' is unavailable"
+            case "$ROW_TOKEN_SOURCE" in
+              cascade)
+                echo "::error::selected APM token source 'cascade' is unavailable; configure GH_AW_PLUGINS_TOKEN or GH_AW_GITHUB_TOKEN, or ensure the built-in GITHUB_TOKEN is enabled"
+                ;;
+              github-token)
+                echo "::error::selected APM token source 'github-token' is unavailable; ensure GitHub Actions can issue the built-in GITHUB_TOKEN with contents: read"
+                ;;
+              app)
+                echo "::error::selected APM token source 'app' is unavailable; verify the App ID, private key, installation owner, and repository scope"
+                ;;
+            esac
             exit 1
           fi
           case "$selected" in

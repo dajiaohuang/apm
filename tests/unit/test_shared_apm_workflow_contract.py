@@ -170,6 +170,19 @@ def _code_lines(body: str) -> list[str]:
     return [line for line in body.strip().splitlines() if not line.strip().startswith("#")]
 
 
+def _workflow_action_refs(value: object) -> list[str]:
+    refs: list[str] = []
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key == "uses" and isinstance(child, str):
+                refs.append(child)
+            refs.extend(_workflow_action_refs(child))
+    elif isinstance(value, list):
+        for child in value:
+            refs.extend(_workflow_action_refs(child))
+    return refs
+
+
 def test_shared_apm_requires_an_explicit_target_without_a_default() -> None:
     target = _frontmatter()["import-schema"]["target"]
 
@@ -281,6 +294,7 @@ def test_shared_apm_fallback_token_has_current_repo_read_only() -> None:
         ("app", "builtin", "app", "cascade", "app", 0),
         ("github-token", "", "", "cascade", None, 1),
         ("app", "builtin", "", "cascade", None, 1),
+        ("cascade", "builtin", "", "", None, 1),
         ("cascade", "builtin", "", "line1\nline2", None, 1),
         ("cascade", "builtin", "", "line1\rline2", None, 1),
         ("", "builtin", "app", "cascade", None, 1),
@@ -319,6 +333,12 @@ def test_shared_apm_token_selection_has_no_cross_identity_fallback(
     assert result.returncode == expected_code
     if expected_token is None:
         assert not output.exists()
+        if token_source == "cascade" and not cascade_token:
+            assert "configure GH_AW_PLUGINS_TOKEN or GH_AW_GITHUB_TOKEN" in result.stdout
+        elif token_source == "github-token" and not builtin_token:
+            assert "built-in GITHUB_TOKEN with contents: read" in result.stdout
+        elif token_source == "app" and not app_token:
+            assert "verify the App ID, private key" in result.stdout
     else:
         assert output.read_text(encoding="utf-8") == f"token={expected_token}\n"
         assert f"::add-mask::{expected_token}" in result.stdout
@@ -614,8 +634,6 @@ def test_repository_pins_exact_gh_aw_compiler_and_generated_locks() -> None:
     assert install_steps
     assert {step["uses"] for step in install_steps} == {action_ref}
     assert {step["with"]["version"] for step in install_steps} == {GH_AW_VERSION}
-    assert not re.search(r"setup-cli@(?![0-9a-f]{40})", maintenance_source)
-
     actions_lock = json.loads(GH_AW_ACTIONS_LOCK.read_text(encoding="utf-8"))
     locked_setup = actions_lock["entries"][f"github/gh-aw-actions/setup@{GH_AW_VERSION}"]
     assert locked_setup["sha"] == GH_AW_ACTION_SHA
@@ -651,18 +669,16 @@ def test_repository_apm_lock_omits_host_compiled_artifacts() -> None:
     assert not re.search(r"\.pyc(?:\s|$)", lock)
 
 
-def test_compiled_locks_pin_every_external_action_by_sha() -> None:
+def test_workflows_pin_every_external_action_by_sha() -> None:
     unpinned: list[str] = []
     workflows = ROOT / ".github" / "workflows"
-    for lock in sorted(workflows.glob("*.lock.yml")):
-        for line in lock.read_text(encoding="utf-8").splitlines():
-            match = re.search(r"uses:\s*([^\s@]+)@(\S+)", line)
-            if (
-                match
-                and "/" in match.group(1)
-                and not re.fullmatch(r"[0-9a-f]{40}", match.group(2))
-            ):
-                unpinned.append(f"{lock.name}: {match.group(0).strip()}")
+    for workflow in sorted(workflows.glob("*.yml")):
+        document = yaml.safe_load(workflow.read_text(encoding="utf-8"))
+        for action_ref in _workflow_action_refs(document):
+            action, separator, ref = action_ref.rpartition("@")
+            if separator and "/" in action and not action.startswith("./"):
+                if not re.fullmatch(r"[0-9a-f]{40}", ref):
+                    unpinned.append(f"{workflow.name}: {action_ref}")
 
     assert not unpinned, unpinned
 
@@ -733,10 +749,13 @@ def test_compiled_locks_scope_token_cascade_to_pack_step() -> None:
             if any(
                 marker in str(value)
                 for value in (step.get("env") or {}).values()
-                for marker in ("secrets.", "github.token", "steps.token.outputs.token")
+                for marker in _CREDENTIAL_MARKERS
             )
         ]
-        assert credential_env_steps == ["Select APM package token"]
+        assert credential_env_steps == [
+            "Select APM package token",
+            "Pack APM packages",
+        ]
 
         leaked = [
             step.get("name")

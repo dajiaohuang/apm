@@ -66,10 +66,14 @@ For no-App rows, `token-source` selects the package credential:
 
 | Value | Behavior |
 |---|---|
-| `cascade` (default) | Uses the first configured value in `GH_AW_PLUGINS_TOKEN` -> `GH_AW_GITHUB_TOKEN` -> `GITHUB_TOKEN`. A configured token that is rejected does not silently fall through to another identity. |
-| `github-token` | Uses only the ephemeral built-in token and fails if that identity is unavailable instead of falling back. The shared `apm` job grants it `contents: read`, so it can read private package paths in the current repository but not other private repositories. |
+| `cascade` (default) | Selects the first configured value in `GH_AW_PLUGINS_TOKEN` -> `GH_AW_GITHUB_TOKEN` -> `GITHUB_TOKEN`. With no override it ends on the same built-in read token as `github-token`. On the shared workflow's GitHub-hosted runner, a configured override that is rejected does not fall through to another identity. |
+| `github-token` | Deterministically selects only the ephemeral built-in token and fails if that identity is unavailable. The shared `apm` job grants it `contents: read`, so it can read private package paths in the current repository but not other private repositories. |
 
-Use `token-source: github-token` when every private package in `packages:` is readable by the current repository token. Private cross-repository packages require the default cascade with an authorized `GH_AW_PLUGINS_TOKEN` or `GH_AW_GITHUB_TOKEN`, or GitHub App credentials. App rows always use their minted installation token regardless of `token-source`.
+Use `token-source: github-token` when every private package in `packages:` is readable by the current repository token and you want to bypass configured cascade overrides. Private cross-repository packages require the default cascade with an authorized `GH_AW_PLUGINS_TOKEN` or `GH_AW_GITHUB_TOKEN`, or GitHub App credentials. App rows always use their minted installation token regardless of `token-source`. The `contents: read` permission is job-wide because GitHub Actions cannot scope token permissions per matrix row.
+
+:::caution[Optional gh-aw telemetry credentials]
+gh-aw v0.87.8 exposes `GH_AW_DEFAULT_OTLP_HEADERS` to the agent and MCP telemetry runtime when that enterprise secret is configured. This compiler-owned telemetry credential is separate from APM package authentication. Leave it unset unless agent-visible telemetry credentials are an accepted boundary.
+:::
 
 **Pinning the apm CLI version (optional):**
 
@@ -87,9 +91,7 @@ imports:
 
 Use a bare semver tag (e.g. `'0.28.0'`). Pass `'latest'` to opt into floating to the newest release; omit the input entirely to keep the workflow's pinned default.
 
-Copies vendored before this change default to APM 0.21.0, the repository's current CLI line when that default was selected. Re-vendoring moves the default to 0.28.0.
-
-If your vendored copy's `apm-action pin:` line reads `v1.4.2`, replace the file with the canonical copy and add `target:` before recompiling. Add `token-source: github-token` when private packages come from the current repository. That action version applies its target input only to packing and does not pass it to the isolated `apm install`; no import input can repair that pair.
+Copies vendored before this change default to APM 0.21.0, the repository's current CLI line when that default was selected. If a copy's `apm-action pin:` line reads `v1.4.2`, its target input applies only to packing and does not reach the isolated install. Replace older copies with the canonical file, set `target:`, and recompile; re-vendoring also moves the default to 0.28.0. Add `token-source: github-token` when private packages come from the current repository.
 
 :::note[Isolated install by default]
 `shared/apm.md` invokes `microsoft/apm-action` with `isolated: true`. Only the packages listed under `packages:` are installed -- any host-repo primitives under `.apm/` or `.github/` (instructions, prompts, skills, agents) are ignored and pre-existing primitive directories are cleared. To merge host-repo primitives with imported ones, use the [apm-action Pre-Step](#apm-action-pre-step) approach below, which leaves `isolated` at its default of `false`.
