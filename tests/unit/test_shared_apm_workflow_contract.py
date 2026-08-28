@@ -638,9 +638,7 @@ def test_repository_pins_exact_gh_aw_compiler_and_generated_locks() -> None:
 
 
 def test_agentic_workflows_agent_is_deployed_verbatim() -> None:
-    source = (ROOT / ".apm" / "agents" / "agentic-workflows.agent.md").read_text(
-        encoding="utf-8"
-    )
+    source = (ROOT / ".apm" / "agents" / "agentic-workflows.agent.md").read_text(encoding="utf-8")
     deployed = (ROOT / ".github" / "agents" / "agentic-workflows.agent.md").read_text(
         encoding="utf-8"
     )

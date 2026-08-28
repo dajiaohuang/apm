@@ -10,12 +10,12 @@ from unittest.mock import MagicMock, call, patch  # noqa: F401
 
 import pytest
 
+from apm_cli.install.deployed_paths import skill_bundle_file_entries
 from apm_cli.install.services import (
     IntegratorBundle,
     _deployed_path_entry,
     _plugin_bin_deployable,
 )
-from apm_cli.install.deployed_paths import skill_bundle_file_entries
 from apm_cli.integration.targets import KNOWN_TARGETS
 from apm_cli.utils.paths import portable_relpath
 
