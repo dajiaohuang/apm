@@ -78,7 +78,7 @@
 #    imports:
 #      - uses: shared/apm.md
 #        with:
-#          apm-version: '0.20.0'
+#          apm-version: '0.28.0'
 #          target: copilot
 #          packages:
 #            - microsoft/apm-sample-package
@@ -230,10 +230,17 @@ jobs:
           IFS=',' read -ra requested_targets <<< "$raw_target"
           for requested in "${requested_targets[@]}"; do
             normalized=$(printf '%s' "$requested" | tr -d '[:space:]' | tr 'A-Z' 'a-z')
-            if [ "$normalized" = "all" ]; then
-              echo "::error::target 'all' degrades to auto-detection in the isolated apm.yml; set a concrete target matching the workflow engine"
-              exit 1
-            fi
+            case "$normalized" in
+              copilot|claude|cursor|codex|opencode|gemini|windsurf|agent-skills) ;;
+              all)
+                echo "::error::target 'all' degrades to auto-detection in the isolated apm.yml; set a concrete target matching the workflow engine"
+                exit 1
+                ;;
+              *)
+                echo "::error::invalid target '$requested'; expected copilot, claude, cursor, codex, opencode, gemini, windsurf, or agent-skills"
+                exit 1
+                ;;
+            esac
           done
       - name: Validate APM token source
         env:

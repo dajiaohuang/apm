@@ -522,20 +522,23 @@ def test_shared_apm_repairs_go_slice_formatted_packages(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("target", "expected_code"),
+    ("target", "expected_code", "expected_fragment"),
     [
-        ("copilot", 0),
-        ("copilot,claude", 0),
-        ("", 1),
-        ("all", 1),
-        ("ALL", 1),
-        ("copilot, all", 1),
-        ("copilot,ALL", 1),
+        ("copilot", 0, ""),
+        ("copilot,claude", 0, ""),
+        ("", 1, "requires a non-empty target"),
+        ("all", 1, "degrades to auto-detection"),
+        ("ALL", 1, "degrades to auto-detection"),
+        ("copilot, all", 1, "degrades to auto-detection"),
+        ("copilot,ALL", 1, "degrades to auto-detection"),
+        ("coplit", 1, "invalid target 'coplit'; expected copilot"),
+        ("copilot,unknown", 1, "invalid target 'unknown'; expected copilot"),
     ],
 )
 def test_shared_apm_rejects_empty_or_cli_only_target(
     target: str,
     expected_code: int,
+    expected_fragment: str,
 ) -> None:
     validate = _validate_step()
     assert validate["env"]["AW_APM_TARGET"] == TARGET_EXPRESSION
@@ -549,20 +552,23 @@ def test_shared_apm_rejects_empty_or_cli_only_target(
     )
 
     assert result.returncode == expected_code
+    if expected_fragment:
+        assert expected_fragment in result.stdout
 
 
 @pytest.mark.parametrize(
-    ("token_source", "expected_code"),
+    ("token_source", "expected_code", "expected_fragment"),
     [
-        ("cascade", 0),
-        ("github-token", 0),
-        ("pat", 1),
-        ("auto", 1),
+        ("cascade", 0, ""),
+        ("github-token", 0, ""),
+        ("pat", 1, "expected cascade or github-token"),
+        ("auto", 1, "expected cascade or github-token"),
     ],
 )
 def test_shared_apm_rejects_unknown_token_source(
     token_source: str,
     expected_code: int,
+    expected_fragment: str,
 ) -> None:
     validate = _token_source_step()
     result = subprocess.run(
@@ -574,6 +580,8 @@ def test_shared_apm_rejects_unknown_token_source(
     )
 
     assert result.returncode == expected_code
+    if expected_fragment:
+        assert expected_fragment in result.stdout
 
 
 def test_in_repo_shared_apm_consumers_use_concrete_targets() -> None:
@@ -672,7 +680,8 @@ def test_repository_apm_lock_omits_host_compiled_artifacts() -> None:
 def test_workflows_pin_every_external_action_by_sha() -> None:
     unpinned: list[str] = []
     workflows = ROOT / ".github" / "workflows"
-    for workflow in sorted(workflows.glob("*.yml")):
+    workflow_files = sorted({*workflows.glob("*.yml"), *workflows.glob("*.yaml")})
+    for workflow in workflow_files:
         document = yaml.safe_load(workflow.read_text(encoding="utf-8"))
         for action_ref in _workflow_action_refs(document):
             action, separator, ref = action_ref.rpartition("@")
