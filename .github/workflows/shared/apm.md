@@ -178,13 +178,12 @@ import-schema:
     required: true
     description: >
       Required target harness for APM compilation. Set this to the apm.yml
-      target matching the gh-aw engine: copilot, claude, cursor, codex,
-      opencode, gemini, windsurf, or agent-skills. A comma-separated list is
-      accepted for multi-target workflows. The deprecated value 'all' is not
-      accepted here: apm-action writes it to the isolated apm.yml, where it
-      degrades to auto-detection in a workspace with no harness markers. The
-      shared workflow intentionally ignores any apm.yml in the consumer repo,
-      so this input is the sole target signal.
+      target matching the gh-aw engine (for example, copilot, claude, or
+      codex). A comma-separated list is accepted for multi-target workflows.
+      The deprecated value 'all' is not accepted here: apm-action writes it to
+      the isolated apm.yml, where it degrades to auto-detection in a workspace
+      with no harness markers. The shared workflow intentionally ignores any
+      apm.yml in the consumer repo, so this input is the sole target signal.
 
   # apm CLI version (overrides apm-action's pinned default)
   apm-version:
@@ -230,17 +229,10 @@ jobs:
           IFS=',' read -ra requested_targets <<< "$raw_target"
           for requested in "${requested_targets[@]}"; do
             normalized=$(printf '%s' "$requested" | tr -d '[:space:]' | tr 'A-Z' 'a-z')
-            case "$normalized" in
-              copilot|claude|cursor|codex|opencode|gemini|windsurf|agent-skills) ;;
-              all)
-                echo "::error::target 'all' degrades to auto-detection in the isolated apm.yml; set a concrete target matching the workflow engine"
-                exit 1
-                ;;
-              *)
-                echo "::error::invalid target '$requested'; expected copilot, claude, cursor, codex, opencode, gemini, windsurf, or agent-skills"
-                exit 1
-                ;;
-            esac
+            if [ "$normalized" = "all" ]; then
+              echo "::error::target 'all' degrades to auto-detection in the isolated apm.yml; set a concrete target matching the workflow engine"
+              exit 1
+            fi
           done
       - name: Validate APM token source
         env:
@@ -482,7 +474,7 @@ jobs:
               exit 1
               ;;
           esac
-          if [ -z "$selected" ]; then
+          if [ -z "$(printf '%s' "$selected" | tr -d '[:space:]')" ]; then
             case "$ROW_TOKEN_SOURCE" in
               cascade)
                 echo "::error::selected APM token source 'cascade' is unavailable; configure GH_AW_PLUGINS_TOKEN or GH_AW_GITHUB_TOKEN, or ensure the built-in GITHUB_TOKEN is enabled"

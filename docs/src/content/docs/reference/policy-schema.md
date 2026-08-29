@@ -338,6 +338,10 @@ For example, a mixed-case `deny` written as `**/Secure-Baseline` does not fire a
 
 Lowercase owner/repository patterns match before and after this fix. APM 0.29.0 and earlier match patterns byte-exactly, so lowercase duplicates added as a workaround stay necessary until every runner runs a release whose notes carry this fix.
 
+Upgrading can also broaden `allow` matches on case-insensitive sources when a
+case-variant entry previously missed. Re-audit allow lists alongside deny and
+require entries during rollout.
+
 ## Complete example
 
 ```yaml

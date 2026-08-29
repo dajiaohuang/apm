@@ -295,6 +295,7 @@ def test_shared_apm_fallback_token_has_current_repo_read_only() -> None:
         ("github-token", "", "", "cascade", None, 1),
         ("app", "builtin", "", "cascade", None, 1),
         ("cascade", "builtin", "", "", None, 1),
+        ("cascade", "builtin", "", "   ", None, 1),
         ("cascade", "builtin", "", "line1\nline2", None, 1),
         ("cascade", "builtin", "", "line1\rline2", None, 1),
         ("", "builtin", "app", "cascade", None, 1),
@@ -333,7 +334,7 @@ def test_shared_apm_token_selection_has_no_cross_identity_fallback(
     assert result.returncode == expected_code
     if expected_token is None:
         assert not output.exists()
-        if token_source == "cascade" and not cascade_token:
+        if token_source == "cascade" and not cascade_token.strip():
             assert "configure GH_AW_PLUGINS_TOKEN or GH_AW_GITHUB_TOKEN" in result.stdout
         elif token_source == "github-token" and not builtin_token:
             assert "built-in GITHUB_TOKEN with contents: read" in result.stdout
@@ -531,8 +532,6 @@ def test_shared_apm_repairs_go_slice_formatted_packages(tmp_path: Path) -> None:
         ("ALL", 1, "degrades to auto-detection"),
         ("copilot, all", 1, "degrades to auto-detection"),
         ("copilot,ALL", 1, "degrades to auto-detection"),
-        ("coplit", 1, "invalid target 'coplit'; expected copilot"),
-        ("copilot,unknown", 1, "invalid target 'unknown'; expected copilot"),
     ],
 )
 def test_shared_apm_rejects_empty_or_cli_only_target(

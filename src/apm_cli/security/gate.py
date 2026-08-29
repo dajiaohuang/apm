@@ -306,6 +306,11 @@ def is_generated_python_artifact(path: Path) -> bool:
     return "__pycache__" in path.parts or path.suffix in {".pyc", ".pyo"}
 
 
+def is_python_bytecode_cache_path(path: Path) -> bool:
+    """Return whether *path* is bytecode stored under ``__pycache__``."""
+    return "__pycache__" in path.parts and path.suffix in {".pyc", ".pyo"}
+
+
 def _explicit_scan_candidate(root: Path, relative: str) -> Path:
     """Return a contained explicit scan path with no symlinked components."""
     path = Path(relative)

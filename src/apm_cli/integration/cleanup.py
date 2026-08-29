@@ -38,7 +38,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from apm_cli.security.gate import is_generated_python_artifact
+from apm_cli.security.gate import is_python_bytecode_cache_path
 
 from .base_integrator import BaseIntegrator
 
@@ -173,7 +173,7 @@ def _safe_remove_skill_directory(
             blocking.append(child_rel)
             continue
         relative_child = child.relative_to(skill_dir)
-        if "__pycache__" in relative_child.parts and is_generated_python_artifact(relative_child):
+        if is_python_bytecode_cache_path(relative_child):
             continue
         if child.is_dir():
             continue

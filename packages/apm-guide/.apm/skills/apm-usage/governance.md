@@ -364,9 +364,7 @@ Chain limit: 5 levels max. Cycles are detected and rejected.
 
 Deny is evaluated first. Empty allow list permits all (except denied).
 
-Identity casing: `allow`, `deny`, and exact `require` match on each dependency's canonical identity. GitHub owner/repo identities, and registry-backed identities, compare case-insensitively (`Contoso/Repo` == `contoso/repo`). Non-GitHub git hosts, ADO, local paths, marketplace identities, virtual in-repo subpaths (after `owner/repo`), refs/version strings (after `#`), MCP names, and registry names stay case-sensitive. Use host-blind `owner/repo` patterns and put those segments before recursive `**`; later ambiguous literal segments remain case-sensitive. Deny takes precedence whenever a pattern matches.
-
-A mixed-case owner-prefix deny that older releases failed to match can correctly surface new violations after upgrade. Lowercase owner/repository patterns match before and after the fix; remove workaround duplicates only after every runner uses a release whose notes include the casing fix.
+Identity casing compares GitHub and registry owner/repository prefixes case-insensitively and keeps other identity boundaries case-sensitive. See [Identity casing](https://microsoft.github.io/apm/reference/policy-schema/#identity-casing) for recursive-glob behavior, upgrade risk, and workaround removal.
 
 ## Baseline checks (always run with --ci)
 

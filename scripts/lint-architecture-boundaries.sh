@@ -1936,11 +1936,15 @@ python_artifact_owner="src/apm_cli/security/gate.py"
 python_artifact_definitions=$(grep -rEc --include='*.py' \
     '^def is_generated_python_artifact\(' src/apm_cli \
     | awk -F: '{sum += $2} END {print sum + 0}')
+python_cache_path_definitions=$(grep -rEc --include='*.py' \
+    '^def is_python_bytecode_cache_path\(' src/apm_cli \
+    | awk -F: '{sum += $2} END {print sum + 0}')
 if [ "$python_artifact_definitions" -ne 1 ] \
+    || [ "$python_cache_path_definitions" -ne 1 ] \
     || ! grep -q 'is_generated_python_artifact(Path(c))' "$python_artifact_owner" \
     || ! grep -q 'is_generated_python_artifact(relative)' \
         src/apm_cli/install/deployed_paths.py \
-    || ! grep -q 'is_generated_python_artifact(relative_child)' \
+    || ! grep -q 'is_python_bytecode_cache_path(relative_child)' \
         src/apm_cli/integration/cleanup.py; then
     echo "[x] Python bytecode copy, inventory, and cleanup must share security/gate.py"
     violations=$((violations + 1))

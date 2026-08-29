@@ -4189,9 +4189,10 @@ def test_generated_python_artifact_membership_has_one_authority() -> None:
     guard = (root / "scripts/lint-architecture-boundaries.sh").read_text(encoding="utf-8")
 
     assert "def is_generated_python_artifact(" in owner
+    assert "def is_python_bytecode_cache_path(" in owner
     assert "is_generated_python_artifact(Path(c))" in owner
     assert "is_generated_python_artifact(relative)" in inventory
-    assert "is_generated_python_artifact(relative_child)" in cleanup
+    assert "is_python_bytecode_cache_path(relative_child)" in cleanup
     assert "AC35: generated Python artifact membership authority" in guard
 
 

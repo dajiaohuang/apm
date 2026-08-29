@@ -372,12 +372,30 @@ class TestUninstallDeployedFiles:
         self,
         packaged_sample: HermeticPackagedSample,
     ) -> None:
+        source_scripts = (
+            packaged_sample.source_repository.worktree
+            / ".apm"
+            / "skills"
+            / "fixture-skill"
+            / "scripts"
+        )
+        source_cache = source_scripts / "__pycache__"
+        source_cache.mkdir(parents=True)
+        (source_cache / "source.cpython-312.pyc").write_bytes(b"source-bytecode")
+        (source_scripts / "legacy.pyc").write_bytes(b"source-legacy-bytecode")
+        packaged_sample.repository_factory.commit(
+            packaged_sample.source_repository,
+            message="add source bytecode fixture",
+        )
+
         _install(packaged_sample, scenario_id="deployed-files-bytecode-initial")
 
         project_dir = packaged_sample.project.root
         skill_dirs = sorted(path for path in (project_dir / ".agents" / "skills").iterdir())
         assert skill_dirs, "Fixture package must deploy a skill"
         skill_dir = skill_dirs[0]
+        assert not (skill_dir / "scripts" / "__pycache__").exists()
+        assert not (skill_dir / "scripts" / "legacy.pyc").exists()
         bytecode = skill_dir / "scripts" / "__pycache__" / "helper.cpython-312.pyc"
         bytecode.parent.mkdir(parents=True, exist_ok=True)
         bytecode.write_bytes(b"generated")
