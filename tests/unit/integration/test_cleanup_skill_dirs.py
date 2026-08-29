@@ -172,6 +172,25 @@ class TestSkillDirectoryCleanup:
         assert ".agents/skills/my-skill" in result.deleted
         assert result.skipped_unmanaged == []
 
+    def test_skill_dir_preserves_untracked_loose_pyc(self, project_root, diagnostics):
+        _make_file(project_root, ".agents/skills/my-skill/SKILL.md", "# Skill\n")
+        loose_pyc = project_root / ".agents" / "skills" / "my-skill" / "notes.pyc"
+        loose_pyc.write_bytes(b"user-content")
+
+        result = remove_stale_deployed_files(
+            [
+                ".agents/skills/my-skill",
+                ".agents/skills/my-skill/SKILL.md",
+            ],
+            project_root,
+            dep_key="pkg",
+            targets=None,
+            diagnostics=diagnostics,
+        )
+
+        assert loose_pyc.exists()
+        assert ".agents/skills/my-skill" in result.skipped_unmanaged
+
     def test_skill_dir_not_removed_when_user_file_present(self, project_root, diagnostics):
         """Skill dir is NOT removed when it contains user-created files."""
         _make_file(project_root, ".agents/skills/my-skill/SKILL.md", "# Skill\n")

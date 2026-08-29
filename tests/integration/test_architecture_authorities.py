@@ -4191,7 +4191,7 @@ def test_generated_python_artifact_membership_has_one_authority() -> None:
     assert "def is_generated_python_artifact(" in owner
     assert "is_generated_python_artifact(Path(c))" in owner
     assert "is_generated_python_artifact(relative)" in inventory
-    assert "is_generated_python_artifact(child.relative_to(skill_dir))" in cleanup
+    assert "is_generated_python_artifact(relative_child)" in cleanup
     assert "AC35: generated Python artifact membership authority" in guard
 
 

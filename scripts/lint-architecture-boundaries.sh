@@ -1940,7 +1940,7 @@ if [ "$python_artifact_definitions" -ne 1 ] \
     || ! grep -q 'is_generated_python_artifact(Path(c))' "$python_artifact_owner" \
     || ! grep -q 'is_generated_python_artifact(relative)' \
         src/apm_cli/install/deployed_paths.py \
-    || ! grep -q 'is_generated_python_artifact(child.relative_to(skill_dir))' \
+    || ! grep -q 'is_generated_python_artifact(relative_child)' \
         src/apm_cli/integration/cleanup.py; then
     echo "[x] Python bytecode copy, inventory, and cleanup must share security/gate.py"
     violations=$((violations + 1))

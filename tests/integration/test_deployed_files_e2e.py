@@ -367,3 +367,35 @@ class TestUninstallDeployedFiles:
         )
         assert result.returncode == 0, f"Uninstall failed: {result.stderr}\n{result.stdout}"
         assert not package_dir.exists(), "Package dir not removed after uninstall"
+
+    def test_uninstall_removes_skill_dir_containing_generated_bytecode(
+        self,
+        packaged_sample: HermeticPackagedSample,
+    ) -> None:
+        _install(packaged_sample, scenario_id="deployed-files-bytecode-initial")
+
+        project_dir = packaged_sample.project.root
+        skill_dirs = sorted(path for path in (project_dir / ".agents" / "skills").iterdir())
+        assert skill_dirs, "Fixture package must deploy a skill"
+        skill_dir = skill_dirs[0]
+        bytecode = skill_dir / "scripts" / "__pycache__" / "helper.cpython-312.pyc"
+        bytecode.parent.mkdir(parents=True, exist_ok=True)
+        bytecode.write_bytes(b"generated")
+
+        dependency = _get_locked_dep(_read_lockfile(project_dir), DEPENDENCY)
+        assert dependency is not None
+        deployed_files = dependency.get("deployed_files", [])
+        assert isinstance(deployed_files, list)
+        assert not [
+            path
+            for path in deployed_files
+            if isinstance(path, str) and ("__pycache__" in path or path.endswith(".pyc"))
+        ]
+
+        result = packaged_sample.run(
+            ("uninstall", DEPENDENCY),
+            scenario_id="deployed-files-bytecode-uninstall",
+        )
+
+        assert result.returncode == 0, f"Uninstall failed: {result.stderr}\n{result.stdout}"
+        assert not skill_dir.exists()

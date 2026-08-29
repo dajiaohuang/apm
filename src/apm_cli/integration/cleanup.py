@@ -172,7 +172,8 @@ def _safe_remove_skill_directory(
                 child_rel = str(child.name)
             blocking.append(child_rel)
             continue
-        if is_generated_python_artifact(child.relative_to(skill_dir)):
+        relative_child = child.relative_to(skill_dir)
+        if "__pycache__" in relative_child.parts and is_generated_python_artifact(relative_child):
             continue
         if child.is_dir():
             continue
