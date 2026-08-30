@@ -115,7 +115,7 @@ GitHub Copilot (CLI and IDE).
 - **File conventions.**
   - instructions: `.github/instructions/<name>.instructions.md`
   - prompts: `.github/prompts/<name>.prompt.md`
-  - agents: `.github/agents/<name>.agent.md`
+  - agents: `.github/agents/<relative-name>.agent.md`
   - skills: `.agents/skills/<name>/SKILL.md` at project scope and
     `~/.agents/skills/<name>/SKILL.md` at user scope
   - hooks: `.github/hooks/<name>.json`
@@ -139,7 +139,7 @@ Claude Code.
 - **File conventions.**
   - instructions: deployed directly by `apm install` to
     `.claude/rules/<name>.md`
-  - agents: `.claude/agents/<name>.md`
+  - agents: `.claude/agents/<relative-name>.md`
   - commands: `.claude/commands/<name>.md`
   - skills: `.claude/skills/<name>/SKILL.md`
   - hooks: merged into `.claude/settings.json`
@@ -155,7 +155,7 @@ Cursor.
 - **Supported primitives.** instructions, agents, skills, commands, hooks, mcp. (No `prompts`.)
 - **File conventions.**
   - instructions: `.cursor/rules/<name>.mdc`
-  - agents: `.cursor/agents/<name>.md`
+  - agents: `.cursor/agents/<relative-name>.md`
   - commands: `.cursor/commands/<name>.md`
   - skills: `.agents/skills/<name>/SKILL.md` (project) or
     `~/.agents/skills/<name>/SKILL.md` (user)
@@ -174,7 +174,7 @@ OpenAI Codex CLI.
 - **Deploy directory.** `.codex/` plus `.agents/` for skills.
 - **Supported primitives.** agents, skills, hooks, mcp. (No `instructions`, `prompts`, or `commands`.)
 - **File conventions.**
-  - agents: `.codex/agents/<name>.toml`
+  - agents: `.codex/agents/<relative-name>.toml`
   - skills: `.agents/skills/<name>/SKILL.md`
   - hooks: `.codex/hooks.json`
 - **Compile output.** `AGENTS.md` only. Per-file instructions are not installed for Codex.
@@ -214,7 +214,7 @@ OpenCode.
 - **Deploy directory.** `.opencode/` at project scope; `~/.config/opencode/` at user scope.
 - **Supported primitives.** agents, commands, skills, mcp.
 - **File conventions.**
-  - agents: `.opencode/agents/<name>.md`
+  - agents: `.opencode/agents/<relative-name>.md`
   - commands: `.opencode/commands/<name>.md`
   - skills: `.agents/skills/<name>/SKILL.md` (project) or
     `~/.config/opencode/skills/<name>/SKILL.md` (user)

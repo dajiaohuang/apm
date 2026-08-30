@@ -143,9 +143,14 @@ Agent definitions in nested directories keep that relative directory in the
 target. Claude plugin manifests may also declare plain `.md` agent files; APM
 accepts those only when they contain non-empty `name` and `description` fields
 in YAML frontmatter. Other Markdown files and non-Markdown sibling resources
-are not deployed as agents, and `apm install` lists them in a warning. If an
-agent must ship scripts, templates, or other runtime resources, package it as a
-skill bundle instead.
+are not deployed as agents. `apm install` warns about them; use `--verbose` to
+list the paths. If an agent must ship scripts, templates, or other runtime
+resources, package it as a skill bundle instead.
+
+```text
+.apm/agents/review/team-reviewer.agent.md
+  -> .github/agents/review/team-reviewer.agent.md
+```
 
 ### Frontmatter
 
@@ -224,7 +229,6 @@ offending package and field so you can fix the source.
 | opencode | `.opencode/agents/<relative-name>.md` | verbatim |
 | codex | `.codex/agents/<relative-name>.toml` | `name` and `description` -> TOML; body becomes `developer_instructions`; unsupported `tools` emits a warning |
 | kiro | `.kiro/agents/<relative-stem>.md` | `description`, `model`, `tools` kept; `name` and unknown fields stripped; identity from path; fail closed on unsupported tools (ref: [kiro.dev/docs/custom-agents](https://kiro.dev/docs/custom-agents/), accessed 2026-08-03) |
-| grok-build | `.grok/agents/<name>.md` | verbatim |
 | windsurf | not deployed | Windsurf has no agents primitive -- author personas as skills (Cascade auto-invokes by description) |
 | gemini | not deployed | Gemini CLI has no agents primitive |
 

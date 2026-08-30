@@ -50,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Agent discovery now preserves nested agent paths, validates plain Markdown
   definitions by `name` and `description` frontmatter, and warns when sibling
   resources cannot be deployed. (closes #2692)
+- Agent discovery now preserves nested paths and warns about undeployable sibling resources. (#2721)
 
 - Git subdirectory dependencies with symlinks to files elsewhere in the same
   repository now install successfully where Git materializes symlinks; APM
