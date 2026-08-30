@@ -6,7 +6,7 @@ runner already proves the registry and the rule catalog agree *by name* and that
 every guard executes exactly once per run.  Names prove nothing about teeth: a
 rule whose body was gutted still registers its guard ID and still runs.
 
-This file supplies the missing half of that contract.  For each of the 55
+This file supplies the missing half of that contract.  For each of the 56
 registered owner guards it pins one minimal, meaningful source mutation -- a
 surgical edit that kills a load-bearing sub-condition of the owning decision --
 and asserts the one rule that owns that guard reports a real `Violation`.
@@ -202,6 +202,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         old="include_scoped_in_user_root_context: bool = False",
         new="include_scoped_in_user_root_context: bool = True",
         intent="TargetProfile flips the user-root scoped-instruction eligibility default.",
+    ),
+    MutationCase(
+        guard_id="install-deployment-agent-source-inventory",
+        rule_id="install-deployment-agent-source-inventory",
+        path="src/apm_cli/integration/agent_integrator.py",
+        old="    def prepare_agent_files(",
+        new="    def prepare_agent_files_disabled(",
+        intent="AgentIntegrator loses its canonical package-level inventory entry point.",
     ),
     MutationCase(
         guard_id="install-deployment-audit-replay",

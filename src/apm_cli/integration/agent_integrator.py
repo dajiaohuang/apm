@@ -66,20 +66,25 @@ class AgentIntegrator(BaseIntegrator):
         Returns:
             List[Path]: List of absolute paths to agent files
         """
-        files: list[Path] = []
-        # Flat search in package root
-        files += self.find_files_by_glob(package_path, "*.agent.md")
-        # Recursive search in .apm/agents/ (use ** glob for subdirectories)
+        files, _ignored = self._classify_agent_files(package_path)
+        return self.filter_authorized_files(files, source_plan)
+
+    def _classify_agent_files(self, package_path: Path) -> tuple[list[Path], list[Path]]:
+        """Classify package agent files and ignored sibling resources once."""
+        files = self.find_files_by_glob(package_path, "*.agent.md")
+        ignored: list[Path] = []
         apm_agents = package_path / ".apm" / "agents"
         if apm_agents.exists():
-            files += self.find_files_by_glob(apm_agents, "**/*.agent.md")
-            # Claude plugin agents may use plain .md names. Require their
-            # mandatory description frontmatter so guides and templates are
-            # not exposed to the target runtime as invokable agents.
-            for f in self.find_files_by_glob(apm_agents, "**/*.md"):
-                if not f.name.endswith(".agent.md") and self._is_plain_md_agent(f):
-                    files.append(f)
-        return self.filter_authorized_files(files, source_plan)
+            for path in self.find_files_by_glob(apm_agents, "**/*"):
+                if not path.is_file():
+                    continue
+                if path.name.endswith(".agent.md") or (
+                    path.suffix == ".md" and self._is_plain_md_agent(path)
+                ):
+                    files.append(path)
+                else:
+                    ignored.append(path)
+        return files, ignored
 
     @staticmethod
     def _is_plain_md_agent(source: Path) -> bool:
@@ -110,34 +115,48 @@ class AgentIntegrator(BaseIntegrator):
         self,
         package_path: Path,
         package_name: str,
+        ignored_resources: list[Path],
         diagnostics=None,
-        source_plan=None,
     ) -> None:
         """Warn when files under .apm/agents are not deployable agents."""
-        apm_agents = package_path / ".apm" / "agents"
-        if not apm_agents.is_dir():
+        if not ignored_resources:
             return
-        candidates = [
-            path
-            for path in self.find_files_by_glob(apm_agents, "**/*")
-            if path.is_file()
-            and not path.name.endswith(".agent.md")
-            and not (path.suffix == ".md" and self._is_plain_md_agent(path))
-        ]
-        ignored = self.filter_authorized_files(candidates, source_plan)
-        if not ignored:
-            return
-        relative = sorted(portable_relpath(path, package_path) for path in ignored)
+        relative = sorted(
+            printable_ascii_text(portable_relpath(path, package_path)) for path in ignored_resources
+        )
         message = (
             f"Ignored {len(relative)} non-agent file(s) under .apm/agents; "
             "only *.agent.md files and plain Markdown files with name and "
-            "description frontmatter are deployable."
+            "description frontmatter are deployable. Run with --verbose to list "
+            "the files. Package required runtime resources as a skill bundle, "
+            "then rerun 'apm install'."
         )
         detail = ", ".join(relative)
         if diagnostics is not None:
-            diagnostics.warn(message=message, package=package_name, detail=detail)
+            diagnostics.warn(
+                message=message,
+                package=printable_ascii_text(package_name),
+                detail=detail,
+            )
         else:
             _rich_warning(f"{message} Files: {detail}")
+
+    def prepare_agent_files(
+        self,
+        package_path: Path,
+        package_name: str,
+        diagnostics=None,
+        source_plan=None,
+    ) -> list[Path]:
+        """Discover deployable agents and report ignored resources once."""
+        agent_files, ignored_resources = self._classify_agent_files(package_path)
+        self._warn_ignored_agent_resources(
+            package_path,
+            package_name,
+            ignored_resources,
+            diagnostics,
+        )
+        return self.filter_authorized_files(agent_files, source_plan)
 
     @staticmethod
     def _source_agent_relpath(source_file: Path, package_path: Path | None = None) -> Path:
@@ -191,6 +210,7 @@ class AgentIntegrator(BaseIntegrator):
         diagnostics=None,
         scope=None,
         source_plan=None,
+        agent_files: list[Path] | None = None,
     ) -> IntegrationResult:
         """Integrate agents from a package for a single *target*.
 
@@ -208,13 +228,13 @@ class AgentIntegrator(BaseIntegrator):
             return IntegrationResult(0, 0, 0, [])
 
         self.init_link_resolver(package_info, project_root)
-        agent_files = self.find_agent_files(package_info.install_path, source_plan)
-        self._warn_ignored_agent_resources(
-            package_info.install_path,
-            package_info.package.name,
-            diagnostics,
-            source_plan,
-        )
+        if agent_files is None:
+            agent_files = self.prepare_agent_files(
+                package_info.install_path,
+                package_info.package.name,
+                diagnostics,
+                source_plan,
+            )
         if not agent_files:
             return IntegrationResult(0, 0, 0, [])
 
@@ -755,8 +775,7 @@ class AgentIntegrator(BaseIntegrator):
         copilot = KNOWN_TARGETS["copilot"]
 
         self.init_link_resolver(package_info, project_root)
-        agent_files = self.find_agent_files(package_info.install_path)
-        self._warn_ignored_agent_resources(
+        agent_files = self.prepare_agent_files(
             package_info.install_path,
             package_info.package.name,
             diagnostics,

@@ -51,6 +51,13 @@
       "guards": ["install-deployment-frozen-mutation-eligibility"]
     },
     {
+      "id": "agent-source-admission-inventory",
+      "decision": "Agent source admission, relative identity, and package-level inventory",
+      "owner": "integration/agent_integrator.py (prepare_agent_files, _is_plain_md_agent, _source_agent_relpath)",
+      "selectors": ["src/apm_cli/integration/agent_integrator.py"],
+      "guards": ["install-deployment-agent-source-inventory"]
+    },
+    {
       "id": "authorized-deployable-source-paths",
       "decision": "Authorized deployable source paths",
       "owner": "install/deployable_source_plan.py (DeployableSourcePlan)",

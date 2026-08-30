@@ -214,6 +214,29 @@ def _log_package_target_restriction(logger: InstallLogger | None, target_selecti
     )
 
 
+def _prepare_primitive_inputs(
+    primitive_name: str,
+    integrator: Any,
+    package_info: Any,
+    targets: Any,
+    diagnostics: Any,
+    source_plan: Any,
+) -> dict[str, Any]:
+    """Prepare package-scoped inputs reused across target integrations."""
+    if primitive_name != "agents" or not any(
+        target.primitives.get("agents") is not None for target in targets
+    ):
+        return {}
+    return {
+        "agent_files": integrator.prepare_agent_files(
+            package_info.install_path,
+            package_info.package.name,
+            diagnostics,
+            source_plan,
+        )
+    }
+
+
 def integrate_package_primitives(  # noqa: PLR0913
     package_info: Any,
     project_root: Path,
@@ -500,6 +523,14 @@ def integrate_package_primitives(  # noqa: PLR0913
         _agg_paths: list[str] = []
         _agg_hook_payloads: list = []
         _label = _prim_name
+        _prepared_inputs = _prepare_primitive_inputs(
+            _prim_name,
+            _integrator,
+            package_info,
+            targets,
+            diagnostics,
+            source_plan,
+        )
         for _target in targets:
             _mapping = _target.primitives.get(_prim_name)
             if _mapping is None:
@@ -510,6 +541,7 @@ def integrate_package_primitives(  # noqa: PLR0913
                 "diagnostics": diagnostics,
                 "scope": scope,
                 "source_plan": source_plan,
+                **_prepared_inputs,
             }
             # Hook integrator alone needs the scope signal: project-scope
             # deploys keep ``command`` paths repo-relative (#1394), user-scope

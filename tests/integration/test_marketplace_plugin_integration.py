@@ -16,10 +16,14 @@ import pytest
 from click.testing import CliRunner
 
 from apm_cli.commands.install import install
+from apm_cli.deps.plugin_parser import _map_plugin_artifacts
+from apm_cli.install.deployable_source_plan import DeployableSourcePlan
 from apm_cli.integration.agent_integrator import AgentIntegrator
 from apm_cli.integration.command_integrator import CommandIntegrator
 from apm_cli.integration.prompt_integrator import PromptIntegrator
 from apm_cli.integration.skill_integrator import SkillIntegrator
+from apm_cli.integration.targets import KNOWN_TARGETS
+from apm_cli.utils.diagnostics import CATEGORY_WARNING, DiagnosticCollector
 from src.apm_cli.models.apm_package import (
     APMPackage,
     GitReferenceType,
@@ -235,6 +239,73 @@ class TestPluginIntegration:
         assert (prompts_dir / "test-command.prompt.md").exists(), (
             "Command should be mapped to prompts"
         )
+
+    def test_nested_agent_bundle_maps_and_deploys_to_multiple_targets(self, tmp_path):
+        """A declared agent bundle keeps identity and reports sibling resources."""
+        plugin_dir = tmp_path / "plugin"
+        agent_dir = plugin_dir / "agents" / "my-agent"
+        (agent_dir / "scripts").mkdir(parents=True)
+        (agent_dir / "my-agent.md").write_text(
+            "---\nname: my-agent\ndescription: Test agent\n---\n# Agent\n"
+        )
+        (agent_dir / "scripts" / "helper.py").write_text("print('helper')\n")
+        apm_dir = plugin_dir / ".apm"
+        apm_dir.mkdir()
+        _map_plugin_artifacts(
+            plugin_dir,
+            apm_dir,
+            manifest={"agents": ["./agents/my-agent"]},
+        )
+
+        package = APMPackage(name="test-pkg", version="1.0.0", package_path=plugin_dir)
+        package_info = PackageInfo(
+            package=package,
+            install_path=plugin_dir,
+            resolved_reference=ResolvedReference(
+                original_ref="main",
+                ref_type=GitReferenceType.BRANCH,
+                resolved_commit="abc123",
+                ref_name="main",
+            ),
+            installed_at=datetime.now().isoformat(),
+        )
+        targets = [KNOWN_TARGETS["copilot"], KNOWN_TARGETS["claude"]]
+        (tmp_path / ".claude").mkdir()
+        source_plan = DeployableSourcePlan.create(
+            package_info,
+            targets,
+            skill_subset=None,
+            hooks_approved=False,
+            canvas_approved=False,
+            skip_bin=True,
+        )
+        diagnostics = DiagnosticCollector()
+        integrator = AgentIntegrator()
+        agent_files = integrator.prepare_agent_files(
+            plugin_dir,
+            package.name,
+            diagnostics,
+            source_plan,
+        )
+
+        results = [
+            integrator.integrate_agents_for_target(
+                target,
+                package_info,
+                tmp_path,
+                diagnostics=diagnostics,
+                source_plan=source_plan,
+                agent_files=agent_files,
+            )
+            for target in targets
+        ]
+
+        assert (tmp_path / ".github/agents/my-agent/my-agent.agent.md").is_file()
+        assert (tmp_path / ".claude/agents/my-agent/my-agent.md").is_file()
+        assert sum(result.files_integrated for result in results) == 2
+        warnings = diagnostics.by_category()[CATEGORY_WARNING]
+        assert len(warnings) == 1
+        assert warnings[0].detail == ".apm/agents/my-agent/scripts/helper.py"
 
     def test_plugin_with_dependencies(self, tmp_path):
         """Test plugin with dependencies are handled correctly."""

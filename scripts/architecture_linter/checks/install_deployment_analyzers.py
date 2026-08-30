@@ -13,6 +13,10 @@ check function's definition order) stays visible and auditable in one place.
 
 from __future__ import annotations
 
+from scripts.architecture_linter.checks.install_agent_inventory import (
+    _GUARD_AGENT_SOURCE_INVENTORY,
+    check_agent_source_inventory,
+)
 from scripts.architecture_linter.checks.install_base_integrator_and_contraction import (
     _GUARD_BASE_INTEGRATOR,
     _GUARD_PROVENANCE,
@@ -54,6 +58,11 @@ from scripts.architecture_linter.checks.install_uninstall_and_resolution import 
 from scripts.architecture_linter.models import Rule
 
 RULES: tuple[Rule, ...] = (
+    _rule(
+        _GUARD_AGENT_SOURCE_INVENTORY,
+        "Agent admission, relative identity, and inventory stay owned by AgentIntegrator.",
+        check_agent_source_inventory,
+    ),
     _rule(
         _GUARD_PACKAGE_TARGET,
         "Restriction-only package target authorization has one owner (install/target_filter.py).",

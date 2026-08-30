@@ -418,6 +418,33 @@ class TestIntegratePackagePrimitives:
         integrators["agent_integrator"].integrate_agents_for_target.assert_called_once()
         assert result["agents"] == 1
 
+    def test_agent_files_are_prepared_once_for_multiple_targets(self, tmp_path: Path) -> None:
+        targets = [
+            make_target(name="copilot", primitives={"agents": make_mapping(subdir="agents")}),
+            make_target(name="claude", primitives={"agents": make_mapping(subdir="agents")}),
+        ]
+        entry = make_dispatch_entry(
+            integrate_method="integrate_agents_for_target",
+            counter_key="agents",
+        )
+
+        _, integrators, diagnostics, _ = invoke_integrate(
+            tmp_path,
+            targets=targets,
+            dispatch_table={"agents": entry},
+            integrator_results={"agents": make_integration_result(files_integrated=1)},
+        )
+
+        agent_integrator = integrators["agent_integrator"]
+        agent_integrator.prepare_agent_files.assert_called_once()
+        assert agent_integrator.integrate_agents_for_target.call_count == 2
+        prepared = agent_integrator.prepare_agent_files.return_value
+        assert all(
+            call.kwargs["agent_files"] is prepared
+            for call in agent_integrator.integrate_agents_for_target.call_args_list
+        )
+        assert agent_integrator.prepare_agent_files.call_args.args[2] is diagnostics
+
     def test_instruction_cursor_rules_use_rule_label(self, tmp_path: Path) -> None:
         target = make_target(
             primitives={

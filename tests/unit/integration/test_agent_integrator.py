@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock
 
+from apm_cli.install.deployable_source_plan import DeployableSourcePlan
 from apm_cli.integration import AgentIntegrator
 from apm_cli.models.apm_package import APMPackage, GitReferenceType, PackageInfo, ResolvedReference
 from apm_cli.utils.diagnostics import (
@@ -577,12 +578,21 @@ This is a skill, not an agent.""")
             installed_at=datetime.now().isoformat(),
         )
         diagnostics = DiagnosticCollector()
+        source_plan = DeployableSourcePlan.create(
+            package_info,
+            [KNOWN_TARGETS["copilot"]],
+            skill_subset=None,
+            hooks_approved=False,
+            canvas_approved=False,
+            skip_bin=True,
+        )
 
         result = self.integrator.integrate_agents_for_target(
             KNOWN_TARGETS["copilot"],
             package_info,
             self.project_root,
             diagnostics=diagnostics,
+            source_plan=source_plan,
         )
 
         expected = self.project_root / ".github" / "agents" / "my-agent" / "my-agent.agent.md"
@@ -594,6 +604,27 @@ This is a skill, not an agent.""")
         assert warnings[0].detail == (
             ".apm/agents/my-agent/guides/reference-doc.md, .apm/agents/my-agent/scripts/helper.py"
         )
+
+    def test_prepare_agent_files_sanitizes_ignored_resource_diagnostic(self):
+        """Package-controlled diagnostic fields stay printable ASCII."""
+        package_dir = self.project_root / "package"
+        agent_dir = package_dir / ".apm" / "agents"
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "agent.agent.md").write_text("# Agent\n")
+        (agent_dir / "helper\nscript.py").write_text("print('helper')\n")
+        diagnostics = DiagnosticCollector()
+
+        files = self.integrator.prepare_agent_files(
+            package_dir,
+            "unsafe\npackage",
+            diagnostics,
+        )
+
+        assert [path.name for path in files] == ["agent.agent.md"]
+        warnings = diagnostics.by_category()[CATEGORY_WARNING]
+        assert warnings[0].package == "unsafe?package"
+        assert warnings[0].detail == ".apm/agents/helper?script.py"
+        assert "Package required runtime resources as a skill bundle" in warnings[0].message
 
     def test_get_target_filename_plain_md(self):
         """Plain .md files get renamed to .agent.md for .github/agents/."""
