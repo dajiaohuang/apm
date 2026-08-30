@@ -35,6 +35,8 @@ from .local_bundle_paths import bundle_pack_files as _bundle_pack_files
 from .local_bundle_paths import bundle_slug_validation_error as _bundle_slug_error
 from .local_bundle_paths import known_bundle_deploy_prefixes as _known_bundle_prefixes
 from .local_bundle_paths import target_bundle_deploy_prefixes as _target_bundle_prefixes
+from .primitive_integration import emit_integration_hints as _emit_integration_hints
+from .primitive_integration import prepare_primitive_inputs as _prepare_primitive_inputs
 from .target_filter import resolve_effective_package_targets
 
 if TYPE_CHECKING:
@@ -113,21 +115,6 @@ def _label_and_deploy_dir(prim_name: str, mapping, target, deploy_dir: str) -> t
     if prim_name == "canvas":
         return "canvas extension(s)", deploy_dir
     return prim_name, deploy_dir
-
-
-def _emit_integration_hints(prim_name: str, info: dict, log_integration) -> None:
-    """Emit per-primitive 'next step' hints after an integration line."""
-    # copilot-app workflows arrive disabled: the row lands enabled=0 and the
-    # user must flip the toggle in the Copilot App's Workflows tab before the
-    # schedule fires.
-    if any(p.startswith("copilot-app/") for p in info["paths"]) and info["files"] > 0:
-        log_integration(
-            "  |-- workflows arrive disabled; enable from the Copilot App's Workflows tab"
-        )
-    # Canvas extensions are discovered by Copilot CLI at session start, so a
-    # freshly-deployed canvas is not picked up mid-session.
-    if prim_name == "canvas" and (info["files"] > 0 or info["adopted"] > 0):
-        log_integration("  |-- reload the Copilot session (/clear) or restart to load the canvas")
 
 
 def _log_hooks_skip(
@@ -212,29 +199,6 @@ def _log_package_target_restriction(logger: InstallLogger | None, target_selecti
     logger.verbose_detail(
         f"Package target restriction: [{declared}]; effective targets: [{effective}]"
     )
-
-
-def _prepare_primitive_inputs(
-    primitive_name: str,
-    integrator: Any,
-    package_info: Any,
-    targets: Any,
-    diagnostics: Any,
-    source_plan: Any,
-) -> dict[str, Any]:
-    """Prepare package-scoped inputs reused across target integrations."""
-    if primitive_name != "agents" or not any(
-        target.primitives.get("agents") is not None for target in targets
-    ):
-        return {}
-    return {
-        "agent_files": integrator.prepare_agent_files(
-            package_info.install_path,
-            package_info.package.name,
-            diagnostics,
-            source_plan,
-        )
-    }
 
 
 def integrate_package_primitives(  # noqa: PLR0913

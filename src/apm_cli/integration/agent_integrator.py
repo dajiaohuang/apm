@@ -133,9 +133,10 @@ class AgentIntegrator(BaseIntegrator):
         )
         detail = ", ".join(relative)
         if diagnostics is not None:
+            safe_package = printable_ascii_text(package_name)
             diagnostics.warn(
                 message=message,
-                package=printable_ascii_text(package_name),
+                package=safe_package,
                 detail=detail,
             )
         else:
