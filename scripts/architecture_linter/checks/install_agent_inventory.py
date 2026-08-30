@@ -46,6 +46,7 @@ def check_agent_source_inventory(provider: FactsProvider) -> tuple[Violation, ..
     if (
         any(count != 1 for count in definition_counts.values())
         or any(not _present(owner, fragment) for fragment in required_owner_fragments)
+        or _present(owner, "_kiro_agent_relpath")
         or not _present(preparation, '"agent_files": integrator.prepare_agent_files(')
         or not _present(services, "prepare_primitive_inputs as _prepare_primitive_inputs")
     ):

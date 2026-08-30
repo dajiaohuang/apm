@@ -127,8 +127,8 @@ class AgentIntegrator(BaseIntegrator):
         message = (
             f"Ignored {len(relative)} non-agent file(s) under .apm/agents; "
             "only *.agent.md files and plain Markdown files with name and "
-            "description frontmatter are deployable. Run with --verbose to list "
-            "the files. Package required runtime resources as a skill bundle, "
+            "description frontmatter are deployable. Ignored file paths appear "
+            "in verbose output. Package required runtime resources as a skill bundle, "
             "then rerun 'apm install'."
         )
         detail = ", ".join(relative)
@@ -251,16 +251,12 @@ class AgentIntegrator(BaseIntegrator):
         total_links_resolved = 0
 
         for source_file in agent_files:
-            # kiro_agent uses relative path from .apm/agents/ for identity.
-            if mapping.format_id == "kiro_agent":
-                target_relpath = self._kiro_agent_relpath(source_file, package_info.install_path)
-            else:
-                target_relpath = self.get_target_filename_for_target(
-                    source_file,
-                    package_info.package.name,
-                    target,
-                    package_info.install_path,
-                )
+            target_relpath = self.get_target_filename_for_target(
+                source_file,
+                package_info.package.name,
+                target,
+                package_info.install_path,
+            )
             target_path = agents_dir / target_relpath
             # Defense-in-depth: assert containment under agents_dir so a
             # regression cannot smuggle a traversal sequence past the adopt
@@ -588,34 +584,6 @@ class AgentIntegrator(BaseIntegrator):
     # ------------------------------------------------------------------
     # Kiro agent transformer (MD -> filtered MD)
     # ------------------------------------------------------------------
-
-    @staticmethod
-    def _kiro_agent_relpath(source_file: Path, package_path: Path) -> str:
-        """Compute the relative target path for a Kiro agent file.
-
-        Preserves subdirectory structure from .apm/agents/ so identity
-        derives from the deployed path, not from a 'name' frontmatter
-        field (Kiro CLI v3 / IDE uses relative path as identity).
-
-        Sources under .apm/agents/ keep their relative subpath; root-level
-        sources are flattened to the filename only.
-
-        Ref: https://kiro.dev/docs/custom-agents/ (accessed 2026-08-03)
-        """
-        apm_agents_root = package_path / ".apm" / "agents"
-        try:
-            rel = source_file.relative_to(apm_agents_root)
-        except ValueError:
-            rel = Path(source_file.name)
-        parts = rel.parts
-        stem = parts[-1]
-        if stem.endswith(".agent.md"):
-            stem = stem[: -len(".agent.md")] + ".md"
-        elif not stem.endswith(".md"):
-            stem = stem + ".md"
-        if len(parts) > 1:
-            return str(Path(*parts[:-1]) / stem)
-        return stem
 
     @staticmethod
     def _preflight_render_kiro_agent(
