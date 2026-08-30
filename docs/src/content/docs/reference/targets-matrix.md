@@ -300,7 +300,7 @@ Cross-client shared skills directory.
 - **Deploy directory.** `.grok/` at project scope; `~/.grok/` at user scope.
 - **Supported primitives.** instructions, agents, commands, and skills.
 - **File conventions.** `.grok/rules/*.md`,
-  `.grok/agents/*.md`, `.grok/commands/*.md`, and
+  `.grok/agents/<relative-name>.md`, `.grok/commands/*.md`, and
   `.grok/skills/<name>/SKILL.md`.
 - **Compile behavior.** Produces `AGENTS.md`.
 

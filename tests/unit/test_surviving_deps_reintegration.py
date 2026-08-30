@@ -358,6 +358,8 @@ def test_uninstall_reintegration_preserves_user_scope_and_denies_bin_trust(
     lockfile = LockFile()
     lockfile.add_dependency(LockedDependency(repo_url="acme/survivor", depth=1))
     observed: list[dict] = []
+    logger = MagicMock()
+    logger.verbose = True
 
     def _record_integration(*_args, **kwargs):
         observed.append(kwargs)
@@ -371,7 +373,7 @@ def test_uninstall_reintegration_preserves_user_scope_and_denies_bin_trust(
         APMPackage.from_apm_yml(tmp_path / "apm.yml"),
         tmp_path,
         set(),
-        MagicMock(),
+        logger,
         lockfile=lockfile,
         user_scope=True,
     )
@@ -382,6 +384,7 @@ def test_uninstall_reintegration_preserves_user_scope_and_denies_bin_trust(
     assert observed[0]["scope"] is InstallScope.USER
     assert observed[0]["trust_bin"] is False
     assert observed[0]["bin_skip_reason_override"] == "not_retrusted_on_uninstall"
+    assert observed[0]["diagnostics"].verbose is True
 
 
 def test_hook_reintegration_sanitizes_blocked_dependency_identity(

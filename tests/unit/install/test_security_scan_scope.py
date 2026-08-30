@@ -99,6 +99,30 @@ def test_source_only_hidden_character_is_not_in_authorized_scan(tmp_path: Path) 
     assert _pre_deploy_security_scan(plan, DiagnosticCollector(), package_name="clean") is True
 
 
+def test_non_agent_markdown_is_not_in_authorized_agent_scan(tmp_path: Path) -> None:
+    """Agent admission and pre-deploy scanning share one file vocabulary."""
+    agents = tmp_path / ".apm" / "agents"
+    agents.mkdir(parents=True)
+    (agents / "reviewer.md").write_text(
+        "---\nname: reviewer\ndescription: Reviews changes\n---\n# Reviewer\n",
+        encoding="utf-8",
+    )
+    (agents / "README.md").write_text("source-only \u202e documentation\n", encoding="utf-8")
+
+    plan = DeployableSourcePlan.create(
+        _package(tmp_path),
+        [_primitive_target("agents")],
+        skill_subset=None,
+        hooks_approved=False,
+        canvas_approved=False,
+        skip_bin=True,
+    )
+    verdict = SecurityGate.scan_files(tmp_path, path_filter=plan.includes)
+
+    assert plan.paths == frozenset({".apm/agents/reviewer.md"})
+    assert verdict.should_block is False
+
+
 def test_root_skill_plan_preserves_arbitrary_files_but_excludes_internal_content(
     tmp_path: Path,
 ) -> None:

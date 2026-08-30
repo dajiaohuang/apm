@@ -1295,7 +1295,7 @@ def _sync_integrations_after_uninstall(
 
     _rebuild_scope = InstallScope.USER if user_scope else InstallScope.PROJECT
     _allow_executables = getattr(apm_package, "allow_executables", None)
-    reintegration_diagnostics = DiagnosticCollector()
+    reintegration_diagnostics = DiagnosticCollector(verbose=logger.verbose)
     for dep_ref, pkg_info, authorized_targets in target_survivor_plan:
         dep_key = dep_ref.get_unique_key()
         deployed_files = package_deployed_files.setdefault(dep_key, [])

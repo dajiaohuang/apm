@@ -39,7 +39,7 @@ actionable findings.
 
 Read `.github/agents/performance-expert.agent.md` for your full persona and mental
 model. When scanning non-transport code, also load
-`.github/agents/algorithmic-patterns.agent.md` for the pattern catalogue.
+`.apm/agents/references/algorithmic-patterns.md` for the pattern catalogue.
 
 ## Context
 
@@ -59,8 +59,8 @@ Before scanning, read the algorithmic patterns reference so you know exactly wha
 to look for:
 
 ```bash
-cat .github/agents/algorithmic-patterns.agent.md 2>/dev/null || \
-  echo "[!] algorithmic-patterns.agent.md not found -- using inline patterns"
+cat .apm/agents/references/algorithmic-patterns.md 2>/dev/null || \
+  echo "[!] algorithmic-patterns.md not found -- using inline patterns"
 ```
 
 Then read a sample of the source tree structure:
