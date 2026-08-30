@@ -1148,21 +1148,28 @@ def _map_plugin_artifacts(
             return False
 
     # Map agents/
-    # Unlike skills (which are named directories containing SKILL.md), agents
-    # are flat files  -- each .md is one agent.  So we always merge directory
-    # contents directly into .apm/agents/ (no nesting by dir name).
+    # The top-level agents/ directory is a collection, so merge its contents
+    # directly into .apm/agents/. A manifest may instead declare one of its
+    # child directories as an agent bundle. Preserve that relative directory
+    # so nested agent identity and sibling resources do not get flattened.
     agent_sources = _resolve_sources("agents", "agents")
     if agent_sources:
         target_agents = apm_dir / "agents"
+        default_agents = (plugin_path / "agents").resolve()
         _assert_no_symlink_descendants(target_agents)
         agent_dirs = [s for s in agent_sources if s.is_dir()]
         agent_files = [s for s in agent_sources if s.is_file()]
         for d in agent_dirs:
-            if _is_same_path(d, target_agents):
+            try:
+                relative_bundle = d.relative_to(default_agents)
+            except ValueError:
+                relative_bundle = Path()
+            destination = target_agents / relative_bundle
+            if _is_same_path(d, destination):
                 continue
             shutil.copytree(
                 d,
-                target_agents,
+                destination,
                 dirs_exist_ok=True,
                 ignore=ignore_non_content,
             )

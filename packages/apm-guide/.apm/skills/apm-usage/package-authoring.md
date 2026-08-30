@@ -341,6 +341,12 @@ supported top-level harness directories: `.agents`, `.apm`, `.claude`,
 
 Chat persona configuration. Place in `.apm/agents/`.
 
+Nested agent definitions preserve their relative directory when installed.
+Plain `.md` definitions from Claude plugins must declare non-empty `name` and
+`description` fields in YAML frontmatter; other Markdown and non-Markdown files
+under the agent directory are skipped with an install warning. Use a skill
+bundle when the runtime needs sibling scripts, templates, or other resources.
+
 ```yaml
 ---
 name: "architect"

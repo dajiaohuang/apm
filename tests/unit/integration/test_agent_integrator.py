@@ -508,15 +508,18 @@ This is a skill, not an agent.""")
         assert "SKILL.md" not in found_names
         assert "skill.md" not in found_names
 
-    def test_find_agent_files_includes_all_md(self):
-        """All .md files in .apm/agents/ are discovered — the directory
-        already implies type, so no name-based filtering."""
+    def test_find_agent_files_requires_frontmatter_for_plain_md(self):
+        """Plain Markdown needs agent frontmatter to be an agent."""
         package_dir = self.project_root / "package"
         apm_agents = package_dir / ".apm" / "agents"
         apm_agents.mkdir(parents=True)
 
-        (apm_agents / "planner.md").write_text("# Planner agent")
-        (apm_agents / "coder.md").write_text("# Coder agent")
+        (apm_agents / "planner.md").write_text(
+            "---\nname: planner\ndescription: Plans implementation work\n---\n# Planner agent"
+        )
+        (apm_agents / "coder.md").write_text(
+            "---\nname: coder\ndescription: Implements approved plans\n---\n# Coder agent"
+        )
         (apm_agents / "README.md").write_text("# Docs")
         (apm_agents / "CHANGELOG.md").write_text("# Changes")
         (apm_agents / "LICENSE.md").write_text("MIT")
@@ -525,14 +528,7 @@ This is a skill, not an agent.""")
         agents = self.integrator.find_agent_files(package_dir)
         names = {a.name for a in agents}
 
-        assert names == {
-            "planner.md",
-            "coder.md",
-            "README.md",
-            "CHANGELOG.md",
-            "LICENSE.md",
-            "CONTRIBUTING.md",
-        }
+        assert names == {"planner.md", "coder.md"}
 
     def test_find_agent_files_discovers_nested_subdirectories(self):
         """find_agent_files uses rglob so agents in subdirs are found."""
@@ -543,7 +539,9 @@ This is a skill, not an agent.""")
 
         (apm_agents / "top-level.agent.md").write_text("# Top")
         (nested / "nested.agent.md").write_text("# Nested agent.md")
-        (nested / "plain-nested.md").write_text("# Nested plain")
+        (nested / "plain-nested.md").write_text(
+            "---\nname: plain-nested\ndescription: Nested plain agent\n---\n# Nested plain"
+        )
 
         agents = self.integrator.find_agent_files(package_dir)
         names = {a.name for a in agents}
@@ -551,6 +549,51 @@ This is a skill, not an agent.""")
         assert "top-level.agent.md" in names
         assert "nested.agent.md" in names
         assert "plain-nested.md" in names
+
+    def test_nested_agent_bundle_filters_resources_and_preserves_agent_path(self):
+        """Nested resources are not agents and nested agent identity is preserved."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        package_dir = self.project_root / "package"
+        agent_dir = package_dir / ".apm" / "agents" / "my-agent"
+        (agent_dir / "guides").mkdir(parents=True)
+        (agent_dir / "scripts").mkdir()
+        (agent_dir / "my-agent.md").write_text(
+            "---\nname: my-agent\ndescription: Test agent\n---\nUse scripts/helper.py.\n"
+        )
+        (agent_dir / "guides" / "reference-doc.md").write_text("# Reference\n")
+        (agent_dir / "scripts" / "helper.py").write_text("print('helper')\n")
+
+        package = APMPackage(name="test-pkg", version="1.0.0", package_path=package_dir)
+        package_info = PackageInfo(
+            package=package,
+            install_path=package_dir,
+            resolved_reference=ResolvedReference(
+                original_ref="main",
+                ref_type=GitReferenceType.BRANCH,
+                resolved_commit="abc123",
+                ref_name="main",
+            ),
+            installed_at=datetime.now().isoformat(),
+        )
+        diagnostics = DiagnosticCollector()
+
+        result = self.integrator.integrate_agents_for_target(
+            KNOWN_TARGETS["copilot"],
+            package_info,
+            self.project_root,
+            diagnostics=diagnostics,
+        )
+
+        expected = self.project_root / ".github" / "agents" / "my-agent" / "my-agent.agent.md"
+        assert result.target_paths == [expected]
+        assert expected.is_file()
+        assert not (self.project_root / ".github" / "agents" / "reference-doc.agent.md").exists()
+        warnings = diagnostics.by_category().get(CATEGORY_WARNING, [])
+        assert len(warnings) == 1
+        assert warnings[0].detail == (
+            ".apm/agents/my-agent/guides/reference-doc.md, .apm/agents/my-agent/scripts/helper.py"
+        )
 
     def test_get_target_filename_plain_md(self):
         """Plain .md files get renamed to .agent.md for .github/agents/."""

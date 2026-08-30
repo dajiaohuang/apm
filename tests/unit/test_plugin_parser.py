@@ -843,6 +843,31 @@ class TestMapPluginArtifacts:
             "Should not create nested agents/agents/ directory"
         )
 
+    def test_declared_agent_subdirectory_preserves_bundle_path(self, tmp_path):
+        """A declared directory under agents keeps its grouping and resources."""
+        plugin_dir = tmp_path / "plugin"
+        agent_dir = plugin_dir / "agents" / "my-agent"
+        (agent_dir / "guides").mkdir(parents=True)
+        (agent_dir / "scripts").mkdir()
+        (agent_dir / "my-agent.md").write_text(
+            "---\nname: my-agent\ndescription: Test agent\n---\nUse scripts/helper.py.\n"
+        )
+        (agent_dir / "guides" / "reference-doc.md").write_text("# Reference\n")
+        (agent_dir / "scripts" / "helper.py").write_text("print('helper')\n")
+
+        apm_dir = plugin_dir / ".apm"
+        apm_dir.mkdir()
+        _map_plugin_artifacts(
+            plugin_dir,
+            apm_dir,
+            manifest={"agents": ["./agents/my-agent"]},
+        )
+
+        staged = apm_dir / "agents" / "my-agent"
+        assert (staged / "my-agent.md").is_file()
+        assert (staged / "guides" / "reference-doc.md").is_file()
+        assert (staged / "scripts" / "helper.py").is_file()
+
 
 class TestGenerateApmYml:
     def test_generate_full_metadata(self):

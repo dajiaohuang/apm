@@ -16,6 +16,7 @@ import yaml
 from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult
 from apm_cli.integration.opencode_frontmatter import validate_opencode_frontmatter
 from apm_cli.utils.atomic_io import normalize_crlf_to_lf, write_text_lf
+from apm_cli.utils.console import _rich_warning
 from apm_cli.utils.diagnostics import printable_ascii_text
 from apm_cli.utils.path_security import PathTraversalError, ensure_path_within
 from apm_cli.utils.paths import portable_relpath
@@ -56,7 +57,8 @@ class AgentIntegrator(BaseIntegrator):
 
         Searches in:
         - Package root directory (*.agent.md files)
-        - .apm/agents/ subdirectory (recursive): *.agent.md and plain *.md files
+        - .apm/agents/ subdirectory (recursive): explicit *.agent.md files
+          and plain *.md files with agent frontmatter
 
         Args:
             package_path: Path to the package directory
@@ -71,11 +73,86 @@ class AgentIntegrator(BaseIntegrator):
         apm_agents = package_path / ".apm" / "agents"
         if apm_agents.exists():
             files += self.find_files_by_glob(apm_agents, "**/*.agent.md")
-            # Also pick up plain .md files; the directory name implies type
+            # Claude plugin agents may use plain .md names. Require their
+            # mandatory description frontmatter so guides and templates are
+            # not exposed to the target runtime as invokable agents.
             for f in self.find_files_by_glob(apm_agents, "**/*.md"):
-                if not f.name.endswith(".agent.md") and f not in files:
+                if not f.name.endswith(".agent.md") and self._is_plain_md_agent(f):
                     files.append(f)
         return self.filter_authorized_files(files, source_plan)
+
+    @staticmethod
+    def _is_plain_md_agent(source: Path) -> bool:
+        """Return whether a plain Markdown file declares agent frontmatter."""
+        try:
+            content = source.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            return False
+        match = AgentIntegrator._FRONTMATTER_RE.match(content)
+        if match is None:
+            return False
+        try:
+            frontmatter = load_yaml_str(match.group(1))
+        except yaml.YAMLError:
+            return False
+        if not isinstance(frontmatter, dict):
+            return False
+        name = frontmatter.get("name")
+        description = frontmatter.get("description")
+        return (
+            isinstance(name, str)
+            and bool(name.strip())
+            and isinstance(description, str)
+            and bool(description.strip())
+        )
+
+    def _warn_ignored_agent_resources(
+        self,
+        package_path: Path,
+        package_name: str,
+        diagnostics=None,
+        source_plan=None,
+    ) -> None:
+        """Warn when files under .apm/agents are not deployable agents."""
+        apm_agents = package_path / ".apm" / "agents"
+        if not apm_agents.is_dir():
+            return
+        candidates = [
+            path
+            for path in self.find_files_by_glob(apm_agents, "**/*")
+            if path.is_file()
+            and not path.name.endswith(".agent.md")
+            and not (path.suffix == ".md" and self._is_plain_md_agent(path))
+        ]
+        ignored = self.filter_authorized_files(candidates, source_plan)
+        if not ignored:
+            return
+        relative = sorted(portable_relpath(path, package_path) for path in ignored)
+        message = (
+            f"Ignored {len(relative)} non-agent file(s) under .apm/agents; "
+            "only *.agent.md files and plain Markdown files with name and "
+            "description frontmatter are deployable."
+        )
+        detail = ", ".join(relative)
+        if diagnostics is not None:
+            diagnostics.warn(message=message, package=package_name, detail=detail)
+        else:
+            _rich_warning(f"{message} Files: {detail}")
+
+    @staticmethod
+    def _source_agent_relpath(source_file: Path, package_path: Path | None = None) -> Path:
+        """Return an agent's path relative to the canonical agents directory."""
+        if package_path is not None:
+            try:
+                return source_file.relative_to(package_path / ".apm" / "agents")
+            except ValueError:
+                return Path(source_file.name)
+
+        parts = source_file.parts
+        for index in range(len(parts) - 1):
+            if parts[index : index + 2] == (".apm", "agents"):
+                return Path(*parts[index + 2 :])
+        return Path(source_file.name)
 
     # NOTE: find_skill_file(), integrate_skill(), and _generate_skill_agent_content()
     # have been REMOVED as part of T5 (skill-strategy.md).
@@ -94,12 +171,14 @@ class AgentIntegrator(BaseIntegrator):
         source_file: Path,
         package_name: str,
         target: TargetProfile,
+        package_path: Path | None = None,
     ) -> str:
-        """Generate target filename using the extension from *target*'s agents mapping."""
+        """Generate a target-relative path using the target agent extension."""
         mapping = target.primitives.get("agents")
         ext = mapping.extension if mapping else ".agent.md"
         stem = source_file.name[:-9] if source_file.name.endswith(".agent.md") else source_file.stem
-        return f"{stem}{ext}"
+        source_relpath = self._source_agent_relpath(source_file, package_path)
+        return (source_relpath.parent / f"{stem}{ext}").as_posix()
 
     def integrate_agents_for_target(
         self,
@@ -130,6 +209,12 @@ class AgentIntegrator(BaseIntegrator):
 
         self.init_link_resolver(package_info, project_root)
         agent_files = self.find_agent_files(package_info.install_path, source_plan)
+        self._warn_ignored_agent_resources(
+            package_info.install_path,
+            package_info.package.name,
+            diagnostics,
+            source_plan,
+        )
         if not agent_files:
             return IntegrationResult(0, 0, 0, [])
 
@@ -153,6 +238,7 @@ class AgentIntegrator(BaseIntegrator):
                     source_file,
                     package_info.package.name,
                     target,
+                    package_info.install_path,
                 )
             target_path = agents_dir / target_relpath
             # Defense-in-depth: assert containment under agents_dir so a
@@ -231,6 +317,7 @@ class AgentIntegrator(BaseIntegrator):
                     files_skipped += 1
                 continue
 
+            target_path.parent.mkdir(parents=True, exist_ok=True)
             if mapping.format_id == "codex_agent":
                 self._write_codex_agent(
                     source_file,
@@ -669,6 +756,11 @@ class AgentIntegrator(BaseIntegrator):
 
         self.init_link_resolver(package_info, project_root)
         agent_files = self.find_agent_files(package_info.install_path)
+        self._warn_ignored_agent_resources(
+            package_info.install_path,
+            package_info.package.name,
+            diagnostics,
+        )
         if not agent_files:
             return IntegrationResult(0, 0, 0, [])
 
@@ -698,6 +790,7 @@ class AgentIntegrator(BaseIntegrator):
                 source_file,
                 package_info.package.name,
                 copilot,
+                package_info.install_path,
             )
             target_path = agents_dir / target_filename
             try:
@@ -722,6 +815,7 @@ class AgentIntegrator(BaseIntegrator):
                 ):
                     files_skipped += 1
                     continue
+                target_path.parent.mkdir(parents=True, exist_ok=True)
                 links_resolved = self.copy_agent(source_file, target_path)
                 total_links_resolved += links_resolved
                 files_integrated += 1
@@ -733,6 +827,7 @@ class AgentIntegrator(BaseIntegrator):
                     source_file,
                     package_info.package.name,
                     claude_target,
+                    package_info.install_path,
                 )
                 claude_path = claude_agents_dir / claude_filename
                 try:
@@ -752,6 +847,7 @@ class AgentIntegrator(BaseIntegrator):
                 elif not self.check_collision(
                     claude_path, claude_rel, managed_files, force, diagnostics=diagnostics
                 ):
+                    claude_path.parent.mkdir(parents=True, exist_ok=True)
                     self.copy_agent(source_file, claude_path)
                     target_paths.append(claude_path)
 
@@ -761,6 +857,7 @@ class AgentIntegrator(BaseIntegrator):
                     source_file,
                     package_info.package.name,
                     cursor_target,
+                    package_info.install_path,
                 )
                 cursor_path = cursor_agents_dir / cursor_filename
                 try:
@@ -780,6 +877,7 @@ class AgentIntegrator(BaseIntegrator):
                 elif not self.check_collision(
                     cursor_path, cursor_rel, managed_files, force, diagnostics=diagnostics
                 ):
+                    cursor_path.parent.mkdir(parents=True, exist_ok=True)
                     self.copy_agent(source_file, cursor_path)
                     target_paths.append(cursor_path)
 
