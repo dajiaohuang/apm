@@ -140,12 +140,12 @@ my-package/
 File names end in `.agent.md` and live under `.apm/agents/`.
 
 Agent definitions in nested directories keep that relative directory in the
-target. Claude plugin manifests may also declare plain `.md` agent files; APM
-accepts those only when they contain non-empty `name` and `description` fields
-in YAML frontmatter. Other Markdown files and non-Markdown sibling resources
-are not deployed as agents. `apm install` warns about them; use `--verbose` to
-list the paths. If an agent must ship scripts, templates, or other runtime
-resources, package it as a skill bundle instead.
+target. For compatibility, `.apm/agents/` may also contain plain `.md` agent
+files; APM accepts those only when they contain non-empty `name` and
+`description` fields in YAML frontmatter. Other Markdown files and non-Markdown
+sibling resources are not deployed as agents. `apm install` warns about them;
+use `--verbose` to list the paths. If an agent must ship scripts, templates, or
+other runtime resources, package it as a skill bundle instead.
 
 ```text
 .apm/agents/review/team-reviewer.agent.md
