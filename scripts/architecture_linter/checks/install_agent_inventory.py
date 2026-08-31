@@ -41,6 +41,7 @@ def check_agent_source_inventory(provider: FactsProvider) -> tuple[Violation, ..
     required_owner_fragments = (
         "files, _ignored = self._classify_agent_files(package_path)",
         "agent_files, ignored_resources = self._classify_agent_files(package_path)",
+        "frontmatter = load_frontmatter(str(source)).metadata",
         "if agent_files is None:",
     )
     if (

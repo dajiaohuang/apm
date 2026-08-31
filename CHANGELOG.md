@@ -47,10 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `apm doctor` now reports malformed project executable-trust configuration
   under either `executables` or the deprecated `allowExecutables` key as an
   actionable informational warning instead of omitting the check. (#2719)
-- Agent discovery now preserves nested agent paths, validates plain Markdown
-  definitions by `name` and `description` frontmatter, and warns when sibling
-  resources cannot be deployed. (closes #2692)
-- Agent discovery now preserves nested paths and warns about undeployable sibling resources. (#2721)
+- Agent discovery now preserves nested paths, validates plain Markdown agent
+  frontmatter, and warns about undeployable sibling resources. (#2721)
 
 - Git subdirectory dependencies with symlinks to files elsewhere in the same
   repository now install successfully where Git materializes symlinks; APM

@@ -3,7 +3,7 @@
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from apm_cli.install.deployable_source_plan import DeployableSourcePlan
 from apm_cli.integration import AgentIntegrator
@@ -531,6 +531,18 @@ This is a skill, not an agent.""")
 
         assert names == {"planner.md", "coder.md"}
 
+    def test_find_agent_files_accepts_bom_prefixed_plain_agent(self):
+        """BOM-prefixed Markdown routes through canonical frontmatter parsing."""
+        package_dir = self.project_root / "package"
+        apm_agents = package_dir / ".apm" / "agents"
+        apm_agents.mkdir(parents=True)
+        agent = apm_agents / "planner.md"
+        agent.write_bytes(
+            b"\xef\xbb\xbf---\nname: planner\ndescription: Plans implementation work\n---\n# Planner\n"
+        )
+
+        assert self.integrator.find_agent_files(package_dir) == [agent]
+
     def test_find_agent_files_discovers_nested_subdirectories(self):
         """find_agent_files uses rglob so agents in subdirs are found."""
         package_dir = self.project_root / "package"
@@ -625,6 +637,35 @@ This is a skill, not an agent.""")
         assert warnings[0].package == "unsafe?package"
         assert warnings[0].detail == ".apm/agents/helper?script.py"
         assert "Package required runtime resources as a skill bundle" in warnings[0].message
+
+    def test_prepare_agent_files_caps_ignored_resource_detail(self):
+        """Ignored-resource diagnostics stay bounded for large bundles."""
+        package_dir = self.project_root / "package"
+        agent_dir = package_dir / ".apm" / "agents"
+        agent_dir.mkdir(parents=True)
+        for index in range(25):
+            (agent_dir / f"resource-{index:02}.txt").write_text("resource\n")
+        diagnostics = DiagnosticCollector()
+
+        self.integrator.prepare_agent_files(package_dir, "large-package", diagnostics)
+
+        warning = diagnostics.by_category()[CATEGORY_WARNING][0]
+        assert warning.detail.count(".apm/agents/resource-") == 20
+        assert warning.detail.endswith(", ... (+5 more)")
+
+    def test_prepare_agent_files_fallback_keeps_paths_out_of_summary(self):
+        """Fallback warnings stay concise when no verbose collector exists."""
+        package_dir = self.project_root / "package"
+        agent_dir = package_dir / ".apm" / "agents"
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "helper.py").write_text("print('helper')\n")
+
+        with patch("apm_cli.integration.agent_integrator._rich_warning") as warning:
+            self.integrator.prepare_agent_files(package_dir, "test-package")
+
+        message = warning.call_args.args[0]
+        assert "helper.py" not in message
+        assert "verbose output" not in message
 
     def test_get_target_filename_plain_md(self):
         """Plain .md files get renamed to .agent.md for .github/agents/."""

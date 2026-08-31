@@ -9,15 +9,18 @@ This test verifies the complete plugin workflow:
 
 import json
 import shutil
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
 
 from apm_cli.commands.install import install
 from apm_cli.deps.plugin_parser import _map_plugin_artifacts
-from apm_cli.install.deployable_source_plan import DeployableSourcePlan
+from apm_cli.install.services import IntegratorBundle, integrate_package_primitives
 from apm_cli.integration.agent_integrator import AgentIntegrator
 from apm_cli.integration.command_integrator import CommandIntegrator
 from apm_cli.integration.prompt_integrator import PromptIntegrator
@@ -269,40 +272,54 @@ class TestPluginIntegration:
             ),
             installed_at=datetime.now().isoformat(),
         )
-        targets = [KNOWN_TARGETS["copilot"], KNOWN_TARGETS["claude"]]
+        targets = [
+            replace(
+                KNOWN_TARGETS[target_name],
+                primitives={"agents": KNOWN_TARGETS[target_name].primitives["agents"]},
+            )
+            for target_name in ("copilot", "claude")
+        ]
         (tmp_path / ".claude").mkdir()
-        source_plan = DeployableSourcePlan.create(
-            package_info,
-            targets,
-            skill_subset=None,
-            hooks_approved=False,
-            canvas_approved=False,
-            skip_bin=True,
-        )
         diagnostics = DiagnosticCollector()
         integrator = AgentIntegrator()
-        agent_files = integrator.prepare_agent_files(
-            plugin_dir,
-            package.name,
-            diagnostics,
-            source_plan,
+        hook_integrator = MagicMock()
+        hook_integrator.reconcile_package_target_restriction = None
+        skill_integrator = MagicMock()
+        skill_integrator.integrate_package_skill.return_value = SimpleNamespace(
+            target_paths=[],
+            skill_created=False,
+            sub_skills_promoted=0,
+            bin_deployed=0,
+            bin_skipped_reason=None,
         )
 
-        results = [
-            integrator.integrate_agents_for_target(
-                target,
+        with patch.object(
+            integrator,
+            "prepare_agent_files",
+            wraps=integrator.prepare_agent_files,
+        ) as prepare_agent_files:
+            result = integrate_package_primitives(
                 package_info,
                 tmp_path,
+                targets=targets,
+                integrators=IntegratorBundle(
+                    prompt=MagicMock(),
+                    agent=integrator,
+                    skill=skill_integrator,
+                    instruction=MagicMock(),
+                    command=MagicMock(),
+                    hook=hook_integrator,
+                ),
+                force=False,
+                managed_files=set(),
                 diagnostics=diagnostics,
-                source_plan=source_plan,
-                agent_files=agent_files,
+                package_name=package.name,
             )
-            for target in targets
-        ]
 
+        prepare_agent_files.assert_called_once()
         assert (tmp_path / ".github/agents/my-agent/my-agent.agent.md").is_file()
         assert (tmp_path / ".claude/agents/my-agent/my-agent.md").is_file()
-        assert sum(result.files_integrated for result in results) == 2
+        assert result["agents"] == 2
         warnings = diagnostics.by_category()[CATEGORY_WARNING]
         assert len(warnings) == 1
         assert warnings[0].detail == ".apm/agents/my-agent/scripts/helper.py"

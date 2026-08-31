@@ -20,7 +20,7 @@ from apm_cli.utils.console import _rich_warning
 from apm_cli.utils.diagnostics import printable_ascii_text
 from apm_cli.utils.path_security import PathTraversalError, ensure_path_within
 from apm_cli.utils.paths import portable_relpath
-from apm_cli.utils.yaml_io import load_yaml_str, yaml_to_str
+from apm_cli.utils.yaml_io import load_frontmatter, load_yaml_str, yaml_to_str
 
 if TYPE_CHECKING:
     from apm_cli.integration.targets import TargetProfile
@@ -44,6 +44,7 @@ KIRO_AGENT_ALLOWED_TOOLS: frozenset[str] = frozenset(
         "*",
     }
 )
+_IGNORED_AGENT_RESOURCE_DETAIL_LIMIT = 20
 
 
 class AgentIntegrator(BaseIntegrator):
@@ -90,15 +91,8 @@ class AgentIntegrator(BaseIntegrator):
     def _is_plain_md_agent(source: Path) -> bool:
         """Return whether a plain Markdown file declares agent frontmatter."""
         try:
-            content = source.read_text(encoding="utf-8")
-        except (OSError, UnicodeError):
-            return False
-        match = AgentIntegrator._FRONTMATTER_RE.match(content)
-        if match is None:
-            return False
-        try:
-            frontmatter = load_yaml_str(match.group(1))
-        except yaml.YAMLError:
+            frontmatter = load_frontmatter(str(source)).metadata
+        except (OSError, UnicodeError, yaml.YAMLError):
             return False
         if not isinstance(frontmatter, dict):
             return False
@@ -122,25 +116,30 @@ class AgentIntegrator(BaseIntegrator):
         if not ignored_resources:
             return
         relative = sorted(
-            printable_ascii_text(portable_relpath(path, package_path)) for path in ignored_resources
+            printable_ascii_text(path.relative_to(package_path).as_posix())
+            for path in ignored_resources
         )
+        noun = "file" if len(relative) == 1 else "files"
         message = (
-            f"Ignored {len(relative)} non-agent file(s) under .apm/agents; "
+            f"Ignored {len(relative)} non-agent {noun} under .apm/agents; "
             "only *.agent.md files and plain Markdown files with name and "
-            "description frontmatter are deployable. Ignored file paths appear "
-            "in verbose output. Package required runtime resources as a skill bundle, "
-            "then rerun 'apm install'."
+            "description frontmatter are deployable. Package required runtime "
+            "resources as a skill bundle, then rerun 'apm install'."
         )
-        detail = ", ".join(relative)
         if diagnostics is not None:
             safe_package = printable_ascii_text(package_name)
+            visible = relative[:_IGNORED_AGENT_RESOURCE_DETAIL_LIMIT]
+            omitted = len(relative) - len(visible)
+            detail = ", ".join(visible)
+            if omitted:
+                detail = f"{detail}, ... (+{omitted} more)"
             diagnostics.warn(
-                message=message,
+                message=f"{message} Ignored file paths appear in verbose output.",
                 package=safe_package,
                 detail=detail,
             )
         else:
-            _rich_warning(f"{message} Files: {detail}")
+            _rich_warning(message)
 
     def prepare_agent_files(
         self,
