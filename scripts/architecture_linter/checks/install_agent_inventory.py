@@ -15,13 +15,11 @@ _GUARD_AGENT_SOURCE_INVENTORY = "install-deployment-agent-source-inventory"
 _OWNER = "src/apm_cli/integration/agent_integrator.py"
 _PREPARATION = "src/apm_cli/install/primitive_integration.py"
 _SERVICES = "src/apm_cli/install/services.py"
-_OWNER_DEFINITIONS = frozenset(
-    {"_is_plain_md_agent", "_source_agent_relpath", "prepare_agent_files"}
-)
+_OWNER_DEFINITIONS = frozenset({"_is_plain_md_agent", "prepare_agent_files"})
 
 
 def check_agent_source_inventory(provider: FactsProvider) -> tuple[Violation, ...]:
-    """Agent admission, identity, and inventory must route through AgentIntegrator."""
+    """Agent admission and inventory must route through AgentIntegrator."""
     rule_id = _GUARD_AGENT_SOURCE_INVENTORY
     owner, owner_fail = _facts_for(provider, _OWNER, rule_id)
     preparation, preparation_fail = _facts_for(provider, _PREPARATION, rule_id)
@@ -42,12 +40,15 @@ def check_agent_source_inventory(provider: FactsProvider) -> tuple[Violation, ..
         "files, _ignored = self._classify_agent_files(package_path)",
         "agent_files, ignored_resources = self._classify_agent_files(package_path)",
         "frontmatter = load_frontmatter(str(source)).metadata",
+        'name = frontmatter.get("name")',
+        'description = frontmatter.get("description")',
+        "and bool(name.strip())",
+        "and bool(description.strip())",
         "if agent_files is None:",
     )
     if (
         any(count != 1 for count in definition_counts.values())
         or any(not _present(owner, fragment) for fragment in required_owner_fragments)
-        or _present(owner, "_kiro_agent_relpath")
         or not _present(preparation, '"agent_files": integrator.prepare_agent_files(')
         or not _present(services, "prepare_primitive_inputs as _prepare_primitive_inputs")
     ):
@@ -55,7 +56,7 @@ def check_agent_source_inventory(provider: FactsProvider) -> tuple[Violation, ..
             _summary(
                 rule_id,
                 _OWNER,
-                "Agent admission, relative identity, and inventory must route through AgentIntegrator",
+                "Agent admission and inventory must route through AgentIntegrator",
             ),
         )
     return ()

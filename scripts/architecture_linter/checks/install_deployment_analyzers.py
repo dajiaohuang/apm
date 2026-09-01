@@ -60,7 +60,7 @@ from scripts.architecture_linter.models import Rule
 RULES: tuple[Rule, ...] = (
     _rule(
         _GUARD_AGENT_SOURCE_INVENTORY,
-        "Agent admission, relative identity, and inventory stay owned by AgentIntegrator.",
+        "Agent admission and inventory stay owned by AgentIntegrator.",
         check_agent_source_inventory,
     ),
     _rule(

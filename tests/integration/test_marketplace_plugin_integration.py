@@ -243,8 +243,8 @@ class TestPluginIntegration:
             "Command should be mapped to prompts"
         )
 
-    def test_nested_agent_bundle_maps_and_deploys_to_multiple_targets(self, tmp_path):
-        """A declared agent bundle keeps identity and reports sibling resources."""
+    def test_declared_agent_directory_flattens_agents_and_reports_resources(self, tmp_path):
+        """Legacy projection stays discoverable and reports unsupported resources."""
         plugin_dir = tmp_path / "plugin"
         agent_dir = plugin_dir / "agents" / "my-agent"
         (agent_dir / "scripts").mkdir(parents=True)
@@ -317,12 +317,12 @@ class TestPluginIntegration:
             )
 
         prepare_agent_files.assert_called_once()
-        assert (tmp_path / ".github/agents/my-agent/my-agent.agent.md").is_file()
-        assert (tmp_path / ".claude/agents/my-agent/my-agent.md").is_file()
+        assert (tmp_path / ".github/agents/my-agent.agent.md").is_file()
+        assert (tmp_path / ".claude/agents/my-agent.md").is_file()
         assert result["agents"] == 2
         warnings = diagnostics.by_category()[CATEGORY_WARNING]
         assert len(warnings) == 1
-        assert warnings[0].detail == ".apm/agents/my-agent/scripts/helper.py"
+        assert warnings[0].detail == ".apm/agents/scripts/helper.py"
 
     def test_plugin_with_dependencies(self, tmp_path):
         """Test plugin with dependencies are handled correctly."""

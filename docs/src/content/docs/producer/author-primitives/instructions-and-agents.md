@@ -139,18 +139,18 @@ my-package/
 
 File names end in `.agent.md` and live under `.apm/agents/`.
 
-Agent definitions in nested directories keep that relative directory in the
-target. For compatibility, `.apm/agents/` may also contain plain `.md` agent
-files; APM accepts those only when they contain non-empty `name` and
-`description` fields in YAML frontmatter. Other Markdown files and non-Markdown
-sibling resources are not deployed as agents. `apm install` warns about them;
-use `--verbose` to list the paths. If an agent must ship scripts, templates, or
-other runtime resources, package it as a skill bundle instead.
+For flat-file harnesses, legacy integration flattens nested definitions into
+the target's agents directory because those harnesses may not discover nested
+agents. Plain `.md` files under `.apm/agents/` are agents only when YAML
+frontmatter contains non-empty `name` and `description` fields. APM skips other
+Markdown and non-Markdown sibling resources and emits one actionable warning;
+use `--verbose` to list the paths. Package runtime resources in a skill bundle.
 
-```text
-.apm/agents/review/team-reviewer.agent.md
-  -> .github/agents/review/team-reviewer.agent.md
-```
+:::note[Planned]
+Agent Plugins 1.0 targets full bundle preservation. Today APM preserves bundles
+natively only for Copilot, and only for skills and MCP servers. See
+[Pack a bundle](../../pack-a-bundle/#what-apm-pack-produces).
+:::
 
 ### Frontmatter
 
@@ -222,12 +222,12 @@ offending package and field so you can fix the source.
 
 | Target | Output path | Transform |
 |---|---|---|
-| copilot | `.github/agents/<relative-name>.agent.md` | verbatim |
-| claude | `.claude/agents/<relative-name>.md` | verbatim |
-| grok-build | `.grok/agents/<relative-name>.md` | verbatim |
-| cursor | `.cursor/agents/<relative-name>.md` | verbatim |
-| opencode | `.opencode/agents/<relative-name>.md` | verbatim |
-| codex | `.codex/agents/<relative-name>.toml` | `name` and `description` -> TOML; body becomes `developer_instructions`; unsupported `tools` emits a warning |
+| copilot | `.github/agents/<name>.agent.md` | verbatim |
+| claude | `.claude/agents/<name>.md` | verbatim |
+| grok-build | `.grok/agents/<name>.md` | verbatim |
+| cursor | `.cursor/agents/<name>.md` | verbatim |
+| opencode | `.opencode/agents/<name>.md` | verbatim |
+| codex | `.codex/agents/<name>.toml` | `name` and `description` -> TOML; body becomes `developer_instructions`; unsupported `tools` emits a warning |
 | kiro | `.kiro/agents/<relative-stem>.md` | `description`, `model`, `tools` kept; `name` and unknown fields stripped; identity from path; fail closed on unsupported tools (ref: [kiro.dev/docs/custom-agents](https://kiro.dev/docs/custom-agents/), accessed 2026-08-03) |
 | windsurf | not deployed | Windsurf has no agents primitive -- author personas as skills (Cascade auto-invokes by description) |
 | gemini | not deployed | Gemini CLI has no agents primitive |

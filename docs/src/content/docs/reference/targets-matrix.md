@@ -115,7 +115,7 @@ GitHub Copilot (CLI and IDE).
 - **File conventions.**
   - instructions: `.github/instructions/<name>.instructions.md`
   - prompts: `.github/prompts/<name>.prompt.md`
-  - agents: `.github/agents/<relative-name>.agent.md`
+  - agents: `.github/agents/<name>.agent.md`
   - skills: `.agents/skills/<name>/SKILL.md` at project scope and
     `~/.agents/skills/<name>/SKILL.md` at user scope
   - hooks: `.github/hooks/<name>.json`
@@ -128,6 +128,10 @@ GitHub Copilot (CLI and IDE).
   CLI can invoke them from any working directory.
 - **Global compile.** `apm compile -g` can also render global instructions to
   `~/.copilot/AGENTS.md` for root-context readers that honor `AGENTS.md`.
+:::note[Planned]
+Agent Plugins 1.0 targets full bundle preservation. Today APM preserves bundles
+natively only for Copilot, and only for skills and MCP servers.
+:::
 
 ## claude
 
@@ -139,7 +143,7 @@ Claude Code.
 - **File conventions.**
   - instructions: deployed directly by `apm install` to
     `.claude/rules/<name>.md`
-  - agents: `.claude/agents/<relative-name>.md`
+  - agents: `.claude/agents/<name>.md`
   - commands: `.claude/commands/<name>.md`
   - skills: `.claude/skills/<name>/SKILL.md`
   - hooks: merged into `.claude/settings.json`
@@ -155,7 +159,7 @@ Cursor.
 - **Supported primitives.** instructions, agents, skills, commands, hooks, mcp. (No `prompts`.)
 - **File conventions.**
   - instructions: `.cursor/rules/<name>.mdc`
-  - agents: `.cursor/agents/<relative-name>.md`
+  - agents: `.cursor/agents/<name>.md`
   - commands: `.cursor/commands/<name>.md`
   - skills: `.agents/skills/<name>/SKILL.md` (project) or
     `~/.agents/skills/<name>/SKILL.md` (user)
@@ -174,7 +178,7 @@ OpenAI Codex CLI.
 - **Deploy directory.** `.codex/` plus `.agents/` for skills.
 - **Supported primitives.** agents, skills, hooks, mcp. (No `instructions`, `prompts`, or `commands`.)
 - **File conventions.**
-  - agents: `.codex/agents/<relative-name>.toml`
+  - agents: `.codex/agents/<name>.toml`
   - skills: `.agents/skills/<name>/SKILL.md`
   - hooks: `.codex/hooks.json`
 - **Compile output.** `AGENTS.md` only. Per-file instructions are not installed for Codex.
@@ -214,7 +218,7 @@ OpenCode.
 - **Deploy directory.** `.opencode/` at project scope; `~/.config/opencode/` at user scope.
 - **Supported primitives.** agents, commands, skills, mcp.
 - **File conventions.**
-  - agents: `.opencode/agents/<relative-name>.md`
+  - agents: `.opencode/agents/<name>.md`
   - commands: `.opencode/commands/<name>.md`
   - skills: `.agents/skills/<name>/SKILL.md` (project) or
     `~/.config/opencode/skills/<name>/SKILL.md` (user)
@@ -300,7 +304,7 @@ Cross-client shared skills directory.
 - **Deploy directory.** `.grok/` at project scope; `~/.grok/` at user scope.
 - **Supported primitives.** instructions, agents, commands, and skills.
 - **File conventions.** `.grok/rules/*.md`,
-  `.grok/agents/<relative-name>.md`, `.grok/commands/*.md`, and
+  `.grok/agents/*.md`, `.grok/commands/*.md`, and
   `.grok/skills/<name>/SKILL.md`.
 - **Compile behavior.** Produces `AGENTS.md`.
 

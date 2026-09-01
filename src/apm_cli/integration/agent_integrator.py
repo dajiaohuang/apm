@@ -158,21 +158,6 @@ class AgentIntegrator(BaseIntegrator):
         )
         return self.filter_authorized_files(agent_files, source_plan)
 
-    @staticmethod
-    def _source_agent_relpath(source_file: Path, package_path: Path | None = None) -> Path:
-        """Return an agent's path relative to the canonical agents directory."""
-        if package_path is not None:
-            try:
-                return source_file.relative_to(package_path / ".apm" / "agents")
-            except ValueError:
-                return Path(source_file.name)
-
-        parts = source_file.parts
-        for index in range(len(parts) - 1):
-            if parts[index : index + 2] == (".apm", "agents"):
-                return Path(*parts[index + 2 :])
-        return Path(source_file.name)
-
     # NOTE: find_skill_file(), integrate_skill(), and _generate_skill_agent_content()
     # have been REMOVED as part of T5 (skill-strategy.md).
     #
@@ -190,14 +175,12 @@ class AgentIntegrator(BaseIntegrator):
         source_file: Path,
         package_name: str,
         target: TargetProfile,
-        package_path: Path | None = None,
     ) -> str:
-        """Generate a target-relative path using the target agent extension."""
+        """Generate target filename using the extension from *target*'s agents mapping."""
         mapping = target.primitives.get("agents")
         ext = mapping.extension if mapping else ".agent.md"
         stem = source_file.name[:-9] if source_file.name.endswith(".agent.md") else source_file.stem
-        source_relpath = self._source_agent_relpath(source_file, package_path)
-        return (source_relpath.parent / f"{stem}{ext}").as_posix()
+        return f"{stem}{ext}"
 
     def integrate_agents_for_target(
         self,
@@ -250,12 +233,16 @@ class AgentIntegrator(BaseIntegrator):
         total_links_resolved = 0
 
         for source_file in agent_files:
-            target_relpath = self.get_target_filename_for_target(
-                source_file,
-                package_info.package.name,
-                target,
-                package_info.install_path,
-            )
+            # Kiro uses the relative source path as agent identity. Other
+            # harnesses discover flat files directly under their agents root.
+            if mapping.format_id == "kiro_agent":
+                target_relpath = self._kiro_agent_relpath(source_file, package_info.install_path)
+            else:
+                target_relpath = self.get_target_filename_for_target(
+                    source_file,
+                    package_info.package.name,
+                    target,
+                )
             target_path = agents_dir / target_relpath
             # Defense-in-depth: assert containment under agents_dir so a
             # regression cannot smuggle a traversal sequence past the adopt
@@ -333,7 +320,6 @@ class AgentIntegrator(BaseIntegrator):
                     files_skipped += 1
                 continue
 
-            target_path.parent.mkdir(parents=True, exist_ok=True)
             if mapping.format_id == "codex_agent":
                 self._write_codex_agent(
                     source_file,
@@ -585,6 +571,34 @@ class AgentIntegrator(BaseIntegrator):
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _kiro_agent_relpath(source_file: Path, package_path: Path) -> str:
+        """Compute the relative target path for a Kiro agent file.
+
+        Preserves subdirectory structure from .apm/agents/ so identity
+        derives from the deployed path, not from a 'name' frontmatter
+        field (Kiro CLI v3 / IDE uses relative path as identity).
+
+        Sources under .apm/agents/ keep their relative subpath; root-level
+        sources are flattened to the filename only.
+
+        Ref: https://kiro.dev/docs/custom-agents/ (accessed 2026-08-03)
+        """
+        apm_agents_root = package_path / ".apm" / "agents"
+        try:
+            rel = source_file.relative_to(apm_agents_root)
+        except ValueError:
+            rel = Path(source_file.name)
+        parts = rel.parts
+        stem = parts[-1]
+        if stem.endswith(".agent.md"):
+            stem = stem[: -len(".agent.md")] + ".md"
+        elif not stem.endswith(".md"):
+            stem = stem + ".md"
+        if len(parts) > 1:
+            return str(Path(*parts[:-1]) / stem)
+        return stem
+
+    @staticmethod
     def _preflight_render_kiro_agent(
         source: Path,
         *,
@@ -777,7 +791,6 @@ class AgentIntegrator(BaseIntegrator):
                 source_file,
                 package_info.package.name,
                 copilot,
-                package_info.install_path,
             )
             target_path = agents_dir / target_filename
             try:
@@ -802,7 +815,6 @@ class AgentIntegrator(BaseIntegrator):
                 ):
                     files_skipped += 1
                     continue
-                target_path.parent.mkdir(parents=True, exist_ok=True)
                 links_resolved = self.copy_agent(source_file, target_path)
                 total_links_resolved += links_resolved
                 files_integrated += 1
@@ -814,7 +826,6 @@ class AgentIntegrator(BaseIntegrator):
                     source_file,
                     package_info.package.name,
                     claude_target,
-                    package_info.install_path,
                 )
                 claude_path = claude_agents_dir / claude_filename
                 try:
@@ -834,7 +845,6 @@ class AgentIntegrator(BaseIntegrator):
                 elif not self.check_collision(
                     claude_path, claude_rel, managed_files, force, diagnostics=diagnostics
                 ):
-                    claude_path.parent.mkdir(parents=True, exist_ok=True)
                     self.copy_agent(source_file, claude_path)
                     target_paths.append(claude_path)
 
@@ -844,7 +854,6 @@ class AgentIntegrator(BaseIntegrator):
                     source_file,
                     package_info.package.name,
                     cursor_target,
-                    package_info.install_path,
                 )
                 cursor_path = cursor_agents_dir / cursor_filename
                 try:
@@ -864,7 +873,6 @@ class AgentIntegrator(BaseIntegrator):
                 elif not self.check_collision(
                     cursor_path, cursor_rel, managed_files, force, diagnostics=diagnostics
                 ):
-                    cursor_path.parent.mkdir(parents=True, exist_ok=True)
                     self.copy_agent(source_file, cursor_path)
                     target_paths.append(cursor_path)
 

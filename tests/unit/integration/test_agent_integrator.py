@@ -563,8 +563,8 @@ This is a skill, not an agent.""")
         assert "nested.agent.md" in names
         assert "plain-nested.md" in names
 
-    def test_nested_agent_bundle_filters_resources_and_preserves_agent_path(self):
-        """Nested resources are not agents and nested agent identity is preserved."""
+    def test_nested_agent_source_filters_resources_and_flattens_agent_path(self):
+        """Nested resources are rejected while legacy agent output stays flat."""
         from apm_cli.integration.targets import KNOWN_TARGETS
 
         package_dir = self.project_root / "package"
@@ -607,7 +607,7 @@ This is a skill, not an agent.""")
             source_plan=source_plan,
         )
 
-        expected = self.project_root / ".github" / "agents" / "my-agent" / "my-agent.agent.md"
+        expected = self.project_root / ".github" / "agents" / "my-agent.agent.md"
         assert result.target_paths == [expected]
         assert expected.is_file()
         assert not (self.project_root / ".github" / "agents" / "reference-doc.agent.md").exists()

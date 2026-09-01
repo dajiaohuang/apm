@@ -843,8 +843,8 @@ class TestMapPluginArtifacts:
             "Should not create nested agents/agents/ directory"
         )
 
-    def test_declared_agent_subdirectory_preserves_bundle_path(self, tmp_path):
-        """A declared directory under agents keeps its grouping and resources."""
+    def test_declared_agent_subdirectory_flattens_into_legacy_staging(self, tmp_path):
+        """A declared agent directory is flattened for legacy primitive projection."""
         plugin_dir = tmp_path / "plugin"
         agent_dir = plugin_dir / "agents" / "my-agent"
         (agent_dir / "guides").mkdir(parents=True)
@@ -863,10 +863,11 @@ class TestMapPluginArtifacts:
             manifest={"agents": ["./agents/my-agent"]},
         )
 
-        staged = apm_dir / "agents" / "my-agent"
+        staged = apm_dir / "agents"
         assert (staged / "my-agent.md").is_file()
         assert (staged / "guides" / "reference-doc.md").is_file()
         assert (staged / "scripts" / "helper.py").is_file()
+        assert not (staged / "my-agent").exists()
 
 
 class TestGenerateApmYml:
