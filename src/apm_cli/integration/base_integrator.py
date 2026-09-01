@@ -433,12 +433,12 @@ class BaseIntegrator:
             deployed content and has been silently adopted.
         """
         identical = False
-        if expected_content is not None and target_path.is_file() and not target_path.is_symlink():
+        if expected_content is not None and not target_path.is_symlink():
             try:
                 expected = expected_content
                 if self._LF_NORMALIZED_DEPLOY:
                     expected = normalize_crlf_to_lf(expected)
-                identical = target_path.read_bytes() == expected.encode("utf-8")
+                identical = _read_bytes_no_follow(target_path) == expected.encode("utf-8")
             except OSError:
                 identical = False
         elif self.is_content_identical_to_source(
@@ -789,7 +789,9 @@ class BaseIntegrator:
                         getattr(package_info, "package_type", None)
                         is PackageType.MARKETPLACE_PLUGIN
                     ):
-                        self.link_resolver.claude_plugin_root = install_path
+                        self.link_resolver.claude_plugin_root = (
+                            self.link_resolver.deployment_package_root
+                        )
         except Exception:
             self.link_resolver = None
 

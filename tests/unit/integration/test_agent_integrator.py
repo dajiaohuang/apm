@@ -604,6 +604,35 @@ This is a skill, not an agent.""")
             assert adopted.files_adopted == 1
             assert adopted.files_skipped == 0
 
+    def test_plugin_root_uses_stable_deployment_path_during_replay(self):
+        """Replay output must match the path used by the original installation."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        replay_root = self.project_root / "replay" / "plugin"
+        agents_dir = replay_root / ".apm" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "builder.md").write_text(
+            "Run ${CLAUDE_PLUGIN_ROOT}/scripts/build.py.\n",
+            encoding="utf-8",
+        )
+        deployment_root = self.project_root / "apm_modules" / "owner" / "plugin"
+        package_info = PackageInfo(
+            package=APMPackage(name="plugin", version="1.0.0", package_path=replay_root),
+            install_path=replay_root,
+            deployment_package_root=deployment_root,
+            package_type=PackageType.MARKETPLACE_PLUGIN,
+        )
+
+        result = self.integrator.integrate_agents_for_target(
+            KNOWN_TARGETS["copilot"],
+            package_info,
+            self.project_root,
+        )
+
+        output = result.target_paths[0].read_text(encoding="utf-8")
+        assert f"{deployment_root.resolve().as_posix()}/scripts/build.py" in output
+        assert replay_root.resolve().as_posix() not in output
+
     def test_plugin_root_token_is_not_resolved_for_apm_packages(self):
         """Claude's plugin token remains literal outside legacy plugins."""
         from apm_cli.integration.targets import KNOWN_TARGETS
