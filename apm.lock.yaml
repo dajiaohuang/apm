@@ -2597,6 +2597,15 @@ deployments:
   content_hash: sha256:d1ea2d038e2af8be11d6c95b3213b03b9777fae46f0438efa95d5a803e6c3765
 - kind: project-relative
   target: copilot
+  value: .github/agents/algorithmic-patterns.agent.md
+  runtime: null
+  scope: project
+  owners:
+  - .
+  active_owner: .
+  content_hash: sha256:278321484288eb8965a42c20cfa65ff055d250579849b1c48cbd3f553883fe5d
+- kind: project-relative
+  target: copilot
   value: .github/agents/apm-ceo.agent.md
   runtime: null
   scope: project
@@ -3011,6 +3020,7 @@ local_deployed_files:
 - .agents/skills/supply-chain-security
 - .agents/skills/supply-chain-security/SKILL.md
 - .github/agents/agentic-workflows.agent.md
+- .github/agents/algorithmic-patterns.agent.md
 - .github/agents/apm-ceo.agent.md
 - .github/agents/apm-primitives-architect.agent.md
 - .github/agents/auth-expert.agent.md
@@ -3260,6 +3270,7 @@ local_deployed_file_hashes:
   .agents/skills/python-architecture/SKILL.md: sha256:f06e50b8c40d7e5a732a5405a603efd80da58de2b6f6b293f0f6b58f28eefe7b
   .agents/skills/supply-chain-security/SKILL.md: sha256:55ef10cd0f6b68e0db5a435a79851c055eab74d93fd552c6626df631deb51df4
   .github/agents/agentic-workflows.agent.md: sha256:d1ea2d038e2af8be11d6c95b3213b03b9777fae46f0438efa95d5a803e6c3765
+  .github/agents/algorithmic-patterns.agent.md: sha256:278321484288eb8965a42c20cfa65ff055d250579849b1c48cbd3f553883fe5d
   .github/agents/apm-ceo.agent.md: sha256:484da64428ea46a6183dffd3f30c9fc5fc5c747639c0c79e55be69dba0899323
   .github/agents/apm-primitives-architect.agent.md: sha256:0c8f04297b14e144f84211b5b881b099233a9847c0fca257b9aa69c4d43d1eef
   .github/agents/auth-expert.agent.md: sha256:18264a933cba432b77d133e6ae11eee294c92ed245629af8c9b7a5bb7a9a300c

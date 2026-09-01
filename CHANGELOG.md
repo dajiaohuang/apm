@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Legacy Claude plugin agents now resolve `${CLAUDE_PLUGIN_ROOT}` to their
+  retained package under `apm_modules` across all projected targets, including
+  Codex and Kiro. (closes #2692)
 - Distributed `apm compile` now reconciles existing managed-section
   `AGENTS.md` files without overwriting hand-authored content, generates new
   placements safely, and never discovers, writes, or cleans content across
@@ -47,9 +50,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `apm doctor` now reports malformed project executable-trust configuration
   under either `executables` or the deprecated `allowExecutables` key as an
   actionable informational warning instead of omitting the check. (#2719)
-- Legacy agent projection now stays flat for harness discovery, admits plain
-  Markdown only with non-empty `name` and `description` frontmatter, and emits
-  one actionable warning when it skips unsupported sibling resources. (#2721)
 
 - Git subdirectory dependencies with symlinks to files elsewhere in the same
   repository now install successfully where Git materializes symlinks; APM

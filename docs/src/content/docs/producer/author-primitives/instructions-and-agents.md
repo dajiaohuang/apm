@@ -139,18 +139,23 @@ my-package/
 
 File names end in `.agent.md` and live under `.apm/agents/`.
 
-For flat-file harnesses, legacy integration flattens nested definitions into
-the target's agents directory because those harnesses may not discover nested
-agents. Plain `.md` files under `.apm/agents/` are agents only when YAML
-frontmatter contains non-empty `name` and `description` fields. APM skips other
-Markdown and non-Markdown sibling resources and emits one actionable warning;
-use `--verbose` to list the paths. Package runtime resources in a skill bundle.
+### Legacy Claude plugin bundles
 
-:::note[Planned]
-Agent Plugins 1.0 targets full bundle preservation. Today APM preserves bundles
-natively only for Copilot, and only for skills and MCP servers. See
-[Pack a bundle](../../pack-a-bundle/#what-apm-pack-produces).
-:::
+APM retains the complete downloaded legacy Claude plugin under `apm_modules` and
+projects its agents into each target's discovery directory. For legacy targets,
+APM resolves Claude's official `${CLAUDE_PLUGIN_ROOT}` token in agent content to
+the retained package. Inline Markdown links to existing package assets are also
+rewritten.
+
+A manifest-declared agent directory recursively treats every Markdown file as
+an agent. If it also contains supporting Markdown that should not be invokable,
+declare exact agent files:
+
+```json
+{
+  "agents": ["./agents/my-agent/my-agent.md"]
+}
+```
 
 ### Frontmatter
 

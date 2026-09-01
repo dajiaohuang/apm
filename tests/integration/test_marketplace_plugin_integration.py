@@ -9,24 +9,17 @@ This test verifies the complete plugin workflow:
 
 import json
 import shutil
-from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
 
 from apm_cli.commands.install import install
-from apm_cli.deps.plugin_parser import _map_plugin_artifacts
-from apm_cli.install.services import IntegratorBundle, integrate_package_primitives
 from apm_cli.integration.agent_integrator import AgentIntegrator
 from apm_cli.integration.command_integrator import CommandIntegrator
 from apm_cli.integration.prompt_integrator import PromptIntegrator
 from apm_cli.integration.skill_integrator import SkillIntegrator
-from apm_cli.integration.targets import KNOWN_TARGETS
-from apm_cli.utils.diagnostics import CATEGORY_WARNING, DiagnosticCollector
 from src.apm_cli.models.apm_package import (
     APMPackage,
     GitReferenceType,
@@ -242,87 +235,6 @@ class TestPluginIntegration:
         assert (prompts_dir / "test-command.prompt.md").exists(), (
             "Command should be mapped to prompts"
         )
-
-    def test_declared_agent_directory_flattens_agents_and_reports_resources(self, tmp_path):
-        """Legacy projection stays discoverable and reports unsupported resources."""
-        plugin_dir = tmp_path / "plugin"
-        agent_dir = plugin_dir / "agents" / "my-agent"
-        (agent_dir / "scripts").mkdir(parents=True)
-        (agent_dir / "my-agent.md").write_text(
-            "---\nname: my-agent\ndescription: Test agent\n---\n# Agent\n"
-        )
-        (agent_dir / "scripts" / "helper.py").write_text("print('helper')\n")
-        apm_dir = plugin_dir / ".apm"
-        apm_dir.mkdir()
-        _map_plugin_artifacts(
-            plugin_dir,
-            apm_dir,
-            manifest={"agents": ["./agents/my-agent"]},
-        )
-
-        package = APMPackage(name="test-pkg", version="1.0.0", package_path=plugin_dir)
-        package_info = PackageInfo(
-            package=package,
-            install_path=plugin_dir,
-            resolved_reference=ResolvedReference(
-                original_ref="main",
-                ref_type=GitReferenceType.BRANCH,
-                resolved_commit="abc123",
-                ref_name="main",
-            ),
-            installed_at=datetime.now().isoformat(),
-        )
-        targets = [
-            replace(
-                KNOWN_TARGETS[target_name],
-                primitives={"agents": KNOWN_TARGETS[target_name].primitives["agents"]},
-            )
-            for target_name in ("copilot", "claude")
-        ]
-        (tmp_path / ".claude").mkdir()
-        diagnostics = DiagnosticCollector()
-        integrator = AgentIntegrator()
-        hook_integrator = MagicMock()
-        hook_integrator.reconcile_package_target_restriction = None
-        skill_integrator = MagicMock()
-        skill_integrator.integrate_package_skill.return_value = SimpleNamespace(
-            target_paths=[],
-            skill_created=False,
-            sub_skills_promoted=0,
-            bin_deployed=0,
-            bin_skipped_reason=None,
-        )
-
-        with patch.object(
-            integrator,
-            "prepare_agent_files",
-            wraps=integrator.prepare_agent_files,
-        ) as prepare_agent_files:
-            result = integrate_package_primitives(
-                package_info,
-                tmp_path,
-                targets=targets,
-                integrators=IntegratorBundle(
-                    prompt=MagicMock(),
-                    agent=integrator,
-                    skill=skill_integrator,
-                    instruction=MagicMock(),
-                    command=MagicMock(),
-                    hook=hook_integrator,
-                ),
-                force=False,
-                managed_files=set(),
-                diagnostics=diagnostics,
-                package_name=package.name,
-            )
-
-        prepare_agent_files.assert_called_once()
-        assert (tmp_path / ".github/agents/my-agent.agent.md").is_file()
-        assert (tmp_path / ".claude/agents/my-agent.md").is_file()
-        assert result["agents"] == 2
-        warnings = diagnostics.by_category()[CATEGORY_WARNING]
-        assert len(warnings) == 1
-        assert warnings[0].detail == ".apm/agents/scripts/helper.py"
 
     def test_plugin_with_dependencies(self, tmp_path):
         """Test plugin with dependencies are handled correctly."""

@@ -396,6 +396,7 @@ class BaseIntegrator:
         force: bool,
         diagnostics,
         target_paths: list,
+        expected_content: str | None = None,
     ) -> tuple[bool, bool]:
         """Check whether *target_path* should be adopted or skipped.
 
@@ -431,9 +432,20 @@ class BaseIntegrator:
             is ``True`` only when the existing file already matched the
             deployed content and has been silently adopted.
         """
-        if self.is_content_identical_to_source(
+        identical = False
+        if expected_content is not None and target_path.is_file() and not target_path.is_symlink():
+            try:
+                expected = expected_content
+                if self._LF_NORMALIZED_DEPLOY:
+                    expected = normalize_crlf_to_lf(expected)
+                identical = target_path.read_bytes() == expected.encode("utf-8")
+            except OSError:
+                identical = False
+        elif self.is_content_identical_to_source(
             target_path, source_file, lf_normalized_deploy=self._LF_NORMALIZED_DEPLOY
         ):
+            identical = True
+        if identical:
             target_paths.append(target_path)
             return True, True
         if self.check_collision(
@@ -771,6 +783,13 @@ class BaseIntegrator:
                     self.link_resolver.deployment_package_root = Path(
                         package_info.deployment_package_root or install_path
                     )
+                    from apm_cli.models.validation import PackageType
+
+                    if (
+                        getattr(package_info, "package_type", None)
+                        is PackageType.MARKETPLACE_PLUGIN
+                    ):
+                        self.link_resolver.claude_plugin_root = install_path
         except Exception:
             self.link_resolver = None
 

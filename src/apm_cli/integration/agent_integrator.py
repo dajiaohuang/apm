@@ -15,12 +15,11 @@ import yaml
 
 from apm_cli.integration.base_integrator import BaseIntegrator, IntegrationResult
 from apm_cli.integration.opencode_frontmatter import validate_opencode_frontmatter
-from apm_cli.utils.atomic_io import normalize_crlf_to_lf, write_text_lf
-from apm_cli.utils.console import _rich_warning
+from apm_cli.utils.atomic_io import write_text_lf
 from apm_cli.utils.diagnostics import printable_ascii_text
 from apm_cli.utils.path_security import PathTraversalError, ensure_path_within
 from apm_cli.utils.paths import portable_relpath
-from apm_cli.utils.yaml_io import load_frontmatter, load_yaml_str, yaml_to_str
+from apm_cli.utils.yaml_io import load_yaml_str, yaml_to_str
 
 if TYPE_CHECKING:
     from apm_cli.integration.targets import TargetProfile
@@ -44,7 +43,6 @@ KIRO_AGENT_ALLOWED_TOOLS: frozenset[str] = frozenset(
         "*",
     }
 )
-_IGNORED_AGENT_RESOURCE_DETAIL_LIMIT = 20
 
 
 class AgentIntegrator(BaseIntegrator):
@@ -58,8 +56,7 @@ class AgentIntegrator(BaseIntegrator):
 
         Searches in:
         - Package root directory (*.agent.md files)
-        - .apm/agents/ subdirectory (recursive): explicit *.agent.md files
-          and plain *.md files with agent frontmatter
+        - .apm/agents/ subdirectory (recursive): *.agent.md and plain *.md files
 
         Args:
             package_path: Path to the package directory
@@ -67,96 +64,18 @@ class AgentIntegrator(BaseIntegrator):
         Returns:
             List[Path]: List of absolute paths to agent files
         """
-        files, _ignored = self._classify_agent_files(package_path)
-        return self.filter_authorized_files(files, source_plan)
-
-    def _classify_agent_files(self, package_path: Path) -> tuple[list[Path], list[Path]]:
-        """Classify package agent files and ignored sibling resources once."""
-        files = self.find_files_by_glob(package_path, "*.agent.md")
-        ignored: list[Path] = []
+        files: list[Path] = []
+        # Flat search in package root
+        files += self.find_files_by_glob(package_path, "*.agent.md")
+        # Recursive search in .apm/agents/ (use ** glob for subdirectories)
         apm_agents = package_path / ".apm" / "agents"
         if apm_agents.exists():
-            for path in self.find_files_by_glob(apm_agents, "**/*"):
-                if not path.is_file():
-                    continue
-                if path.name.endswith(".agent.md") or (
-                    path.suffix == ".md" and self._is_plain_md_agent(path)
-                ):
-                    files.append(path)
-                else:
-                    ignored.append(path)
-        return files, ignored
-
-    @staticmethod
-    def _is_plain_md_agent(source: Path) -> bool:
-        """Return whether a plain Markdown file declares agent frontmatter."""
-        try:
-            frontmatter = load_frontmatter(str(source)).metadata
-        except (OSError, UnicodeError, yaml.YAMLError):
-            return False
-        if not isinstance(frontmatter, dict):
-            return False
-        name = frontmatter.get("name")
-        description = frontmatter.get("description")
-        return (
-            isinstance(name, str)
-            and bool(name.strip())
-            and isinstance(description, str)
-            and bool(description.strip())
-        )
-
-    def _warn_ignored_agent_resources(
-        self,
-        package_path: Path,
-        package_name: str,
-        ignored_resources: list[Path],
-        diagnostics=None,
-    ) -> None:
-        """Warn when files under .apm/agents are not deployable agents."""
-        if not ignored_resources:
-            return
-        relative = sorted(
-            printable_ascii_text(path.relative_to(package_path).as_posix())
-            for path in ignored_resources
-        )
-        noun = "file" if len(relative) == 1 else "files"
-        message = (
-            f"Ignored {len(relative)} non-agent {noun} under .apm/agents; "
-            "only *.agent.md files and plain Markdown files with name and "
-            "description frontmatter are deployable. Package required runtime "
-            "resources as a skill bundle, then rerun 'apm install'."
-        )
-        if diagnostics is not None:
-            safe_package = printable_ascii_text(package_name)
-            visible = relative[:_IGNORED_AGENT_RESOURCE_DETAIL_LIMIT]
-            omitted = len(relative) - len(visible)
-            detail = ", ".join(visible)
-            if omitted:
-                detail = f"{detail}, ... (+{omitted} more)"
-            diagnostics.warn(
-                message=f"{message} Ignored file paths appear in verbose output.",
-                package=safe_package,
-                detail=detail,
-            )
-        else:
-            _rich_warning(message)
-
-    def prepare_agent_files(
-        self,
-        package_path: Path,
-        package_name: str,
-        diagnostics=None,
-        source_plan=None,
-    ) -> list[Path]:
-        """Discover deployable agents and report ignored resources once."""
-        agent_files, ignored_resources = self._classify_agent_files(package_path)
-        self._warn_ignored_agent_resources(
-            package_path,
-            package_name,
-            ignored_resources,
-            diagnostics,
-        )
-        return self.filter_authorized_files(agent_files, source_plan)
+            files += self.find_files_by_glob(apm_agents, "**/*.agent.md")
+            # Also pick up plain .md files; the directory name implies type
+            for f in self.find_files_by_glob(apm_agents, "**/*.md"):
+                if not f.name.endswith(".agent.md") and f not in files:
+                    files.append(f)
+        return self.filter_authorized_files(files, source_plan)
 
     # NOTE: find_skill_file(), integrate_skill(), and _generate_skill_agent_content()
     # have been REMOVED as part of T5 (skill-strategy.md).
@@ -193,7 +112,6 @@ class AgentIntegrator(BaseIntegrator):
         diagnostics=None,
         scope=None,
         source_plan=None,
-        agent_files: list[Path] | None = None,
     ) -> IntegrationResult:
         """Integrate agents from a package for a single *target*.
 
@@ -211,13 +129,7 @@ class AgentIntegrator(BaseIntegrator):
             return IntegrationResult(0, 0, 0, [])
 
         self.init_link_resolver(package_info, project_root)
-        if agent_files is None:
-            agent_files = self.prepare_agent_files(
-                package_info.install_path,
-                package_info.package.name,
-                diagnostics,
-                source_plan,
-            )
+        agent_files = self.find_agent_files(package_info.install_path, source_plan)
         if not agent_files:
             return IntegrationResult(0, 0, 0, [])
 
@@ -233,8 +145,7 @@ class AgentIntegrator(BaseIntegrator):
         total_links_resolved = 0
 
         for source_file in agent_files:
-            # Kiro uses the relative source path as agent identity. Other
-            # harnesses discover flat files directly under their agents root.
+            # kiro_agent uses relative path from .apm/agents/ for identity.
             if mapping.format_id == "kiro_agent":
                 target_relpath = self._kiro_agent_relpath(source_file, package_info.install_path)
             else:
@@ -260,12 +171,20 @@ class AgentIntegrator(BaseIntegrator):
                 files_skipped += 1
                 continue
 
+            if source_file.is_symlink():
+                raise ValueError(f"Refusing to read symlink source: {source_file}")
+            source_content = source_file.read_text(encoding="utf-8")
+            resolved_content, links_resolved = self.resolve_links(
+                source_content, source_file, target_path
+            )
+
             if mapping.format_id == "kiro_agent":
                 # req-tg-009: Preflight render+validate MUST run before any
                 # content-identity adoption fast-path or filesystem mutation.
                 # If validation fails, skip without writing or creating dirs.
                 rendered, ok = self._preflight_render_kiro_agent(
                     source_file,
+                    content=resolved_content,
                     diagnostics=diagnostics,
                     package_name=package_info.package.name,
                 )
@@ -273,24 +192,22 @@ class AgentIntegrator(BaseIntegrator):
                     files_skipped += 1
                     continue
 
-                # Compare rendered artifact (not raw source) against existing
-                # target so a pre-placed file with invalid tools cannot be
-                # adopted by matching source bytes.
                 rel_path = portable_relpath(target_path, project_root)
-                if target_path.exists() and not target_path.is_symlink():
-                    try:
-                        existing = target_path.read_bytes()
-                        rendered_bytes = normalize_crlf_to_lf(rendered).encode("utf-8")
-                        if existing == rendered_bytes:
-                            target_paths.append(target_path)
-                            files_adopted += 1
-                            continue
-                    except OSError:
-                        pass
-                if self.check_collision(
-                    target_path, rel_path, managed_files, force, diagnostics=diagnostics
-                ):
-                    files_skipped += 1
+                skip, adopted = self._check_adopt_or_skip(
+                    target_path,
+                    source_file,
+                    rel_path,
+                    managed_files,
+                    force,
+                    diagnostics,
+                    target_paths,
+                    expected_content=rendered,
+                )
+                if skip:
+                    if adopted:
+                        files_adopted += 1
+                    else:
+                        files_skipped += 1
                     continue
 
                 # Safe to materialize: ensure parent dirs exist then write.
@@ -299,6 +216,7 @@ class AgentIntegrator(BaseIntegrator):
                     agents_dir_created = True
                 target_path.parent.mkdir(parents=True, exist_ok=True)
                 write_text_lf(target_path, rendered)
+                total_links_resolved += links_resolved
                 files_integrated += 1
                 target_paths.append(target_path)
                 continue
@@ -310,8 +228,25 @@ class AgentIntegrator(BaseIntegrator):
 
             rel_path = portable_relpath(target_path, project_root)
 
+            if mapping.format_id == "codex_agent":
+                rendered = self._render_codex_agent(
+                    source_file,
+                    resolved_content,
+                    diagnostics=diagnostics,
+                    package_name=package_info.package.name,
+                )
+            else:
+                rendered = resolved_content
+
             skip, adopted = self._check_adopt_or_skip(
-                target_path, source_file, rel_path, managed_files, force, diagnostics, target_paths
+                target_path,
+                source_file,
+                rel_path,
+                managed_files,
+                force,
+                diagnostics,
+                target_paths,
+                expected_content=rendered,
             )
             if skip:
                 if adopted:
@@ -321,19 +256,13 @@ class AgentIntegrator(BaseIntegrator):
                 continue
 
             if mapping.format_id == "codex_agent":
-                self._write_codex_agent(
-                    source_file,
-                    target_path,
-                    diagnostics=diagnostics,
-                    package_name=package_info.package.name,
-                )
-                links_resolved = 0
+                write_text_lf(target_path, rendered)
             else:
                 if mapping.format_id == "opencode_agent":
                     self._warn_opencode_frontmatter(
                         source_file, diagnostics, package_info.package.name
                     )
-                links_resolved = self.copy_agent(source_file, target_path)
+                write_text_lf(target_path, rendered)
             total_links_resolved += links_resolved
             files_integrated += 1
             target_paths.append(target_path)
@@ -503,23 +432,19 @@ class AgentIntegrator(BaseIntegrator):
         )
 
     @staticmethod
-    def _write_codex_agent(
+    def _render_codex_agent(
         source: Path,
-        target: Path,
+        content: str,
         *,
         diagnostics: DiagnosticCollector | None = None,
         package_name: str = "",
-    ) -> None:
-        """Transform an ``.agent.md`` file to Codex ``.toml`` format.
+    ) -> str:
+        """Transform agent Markdown content to Codex TOML.
 
         Parses YAML frontmatter for ``name`` and ``description``, uses
         the markdown body as ``developer_instructions``.
         """
-        if source.is_symlink():
-            raise ValueError(f"Refusing to read symlink source: {source}")
         import toml as _toml
-
-        content = source.read_text(encoding="utf-8")
 
         name = source.stem
         if name.endswith(".agent"):
@@ -564,7 +489,27 @@ class AgentIntegrator(BaseIntegrator):
             "description": description,
             "developer_instructions": body.strip(),
         }
-        write_text_lf(target, _toml.dumps(doc))
+        return _toml.dumps(doc)
+
+    @staticmethod
+    def _write_codex_agent(
+        source: Path,
+        target: Path,
+        *,
+        diagnostics: DiagnosticCollector | None = None,
+        package_name: str = "",
+    ) -> None:
+        """Read and transform an agent Markdown file to Codex TOML."""
+        if source.is_symlink():
+            raise ValueError(f"Refusing to read symlink source: {source}")
+        content = source.read_text(encoding="utf-8")
+        rendered = AgentIntegrator._render_codex_agent(
+            source,
+            content,
+            diagnostics=diagnostics,
+            package_name=package_name,
+        )
+        write_text_lf(target, rendered)
 
     # ------------------------------------------------------------------
     # Kiro agent transformer (MD -> filtered MD)
@@ -602,6 +547,7 @@ class AgentIntegrator(BaseIntegrator):
     def _preflight_render_kiro_agent(
         source: Path,
         *,
+        content: str | None = None,
         diagnostics=None,
         package_name: str = "",
     ) -> tuple[str | None, bool]:
@@ -623,7 +569,8 @@ class AgentIntegrator(BaseIntegrator):
         if source.is_symlink():
             raise ValueError(f"Refusing to read symlink source: {source}")
 
-        content = source.read_text(encoding="utf-8")
+        if content is None:
+            content = source.read_text(encoding="utf-8")
         body = content
         out_fm: dict = {}
 
@@ -757,11 +704,7 @@ class AgentIntegrator(BaseIntegrator):
         copilot = KNOWN_TARGETS["copilot"]
 
         self.init_link_resolver(package_info, project_root)
-        agent_files = self.prepare_agent_files(
-            package_info.install_path,
-            package_info.package.name,
-            diagnostics,
-        )
+        agent_files = self.find_agent_files(package_info.install_path)
         if not agent_files:
             return IntegrationResult(0, 0, 0, [])
 

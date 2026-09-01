@@ -20,6 +20,7 @@ from scripts.architecture_linter.checks.marketplace_integration_shared import (
     _def_body_text,
     _forbid_scan,
     _load,
+    _require_res,
     _require_subs,
     _src_python,
     _subdir_python,
@@ -204,6 +205,7 @@ _RID_SKILL = "marketplace-integrations-legacy-skill-membership"
 
 
 _SKILL_INTEGRATOR = "src/apm_cli/integration/skill_integrator.py"
+_PLUGIN_ROOT_OWNER = "src/apm_cli/compilation/link_resolver.py"
 
 
 _SKILL_SUBSET_LEXICAL = re.compile(
@@ -226,6 +228,26 @@ def _check_legacy_skill_membership(provider: FactsProvider) -> tuple[Violation, 
                 ("re", r"^def _map_plugin_artifacts\(", 1, "eq"),
             ),
             "plugin_parser must own skill membership and artifact mapping",
+        )
+    )
+    findings.extend(
+        _require_res(
+            provider,
+            inv,
+            _RID_SKILL,
+            _PLUGIN_ROOT_OWNER,
+            (re.compile(r"^def resolve_claude_plugin_root\("),),
+            "link_resolver must own Claude plugin-root token expansion",
+        )
+    )
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_SKILL,
+            _PLUGIN_PARSER,
+            ("resolve_claude_plugin_root(value, plugin_path)",),
+            "plugin_parser must delegate plugin-root expansion to link_resolver",
         )
     )
 

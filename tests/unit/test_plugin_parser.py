@@ -843,31 +843,34 @@ class TestMapPluginArtifacts:
             "Should not create nested agents/agents/ directory"
         )
 
-    def test_declared_agent_subdirectory_flattens_into_legacy_staging(self, tmp_path):
-        """A declared agent directory is flattened for legacy primitive projection."""
+    def test_agent_directory_is_recursive_but_exact_file_excludes_support_docs(self, tmp_path):
+        """Manifest entry shape, not frontmatter, owns agent membership."""
         plugin_dir = tmp_path / "plugin"
-        agent_dir = plugin_dir / "agents" / "my-agent"
-        (agent_dir / "guides").mkdir(parents=True)
-        (agent_dir / "scripts").mkdir()
-        (agent_dir / "my-agent.md").write_text(
-            "---\nname: my-agent\ndescription: Test agent\n---\nUse scripts/helper.py.\n"
-        )
-        (agent_dir / "guides" / "reference-doc.md").write_text("# Reference\n")
-        (agent_dir / "scripts" / "helper.py").write_text("print('helper')\n")
+        agent_dir = plugin_dir / "agents" / "builder"
+        guides_dir = agent_dir / "guides"
+        guides_dir.mkdir(parents=True)
+        (agent_dir / "builder.md").write_text("# Builder")
+        (guides_dir / "reference.md").write_text("# Reference")
 
-        apm_dir = plugin_dir / ".apm"
-        apm_dir.mkdir()
+        recursive_apm = plugin_dir / "recursive" / ".apm"
+        recursive_apm.mkdir(parents=True)
         _map_plugin_artifacts(
             plugin_dir,
-            apm_dir,
-            manifest={"agents": ["./agents/my-agent"]},
+            recursive_apm,
+            manifest={"agents": ["./agents/builder"]},
         )
+        assert (recursive_apm / "agents" / "builder.md").is_file()
+        assert (recursive_apm / "agents" / "guides" / "reference.md").is_file()
 
-        staged = apm_dir / "agents"
-        assert (staged / "my-agent.md").is_file()
-        assert (staged / "guides" / "reference-doc.md").is_file()
-        assert (staged / "scripts" / "helper.py").is_file()
-        assert not (staged / "my-agent").exists()
+        exact_apm = plugin_dir / "exact" / ".apm"
+        exact_apm.mkdir(parents=True)
+        _map_plugin_artifacts(
+            plugin_dir,
+            exact_apm,
+            manifest={"agents": ["./agents/builder/builder.md"]},
+        )
+        assert (exact_apm / "agents" / "builder.md").is_file()
+        assert not (exact_apm / "agents" / "guides").exists()
 
 
 class TestGenerateApmYml:

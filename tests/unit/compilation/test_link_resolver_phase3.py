@@ -30,6 +30,7 @@ from apm_cli.compilation.link_resolver import (
     UnifiedLinkResolver,
     _remove_frontmatter,
     _resolve_path,
+    resolve_claude_plugin_root,
     resolve_markdown_links,
     validate_link_targets,
 )
@@ -86,6 +87,37 @@ class TestRegisterContexts:
         resolver.register_contexts(primitives)
 
         assert "org/repo:dep.context.md" in resolver.context_registry
+
+
+def test_resolve_claude_plugin_root_replaces_only_exact_token(base_dir: Path) -> None:
+    """Plugin-root expansion does not guess at bare or variant paths."""
+    plugin_root = base_dir / "apm_modules" / "_local" / "plugin"
+    content = (
+        "${CLAUDE_PLUGIN_ROOT}/scripts/run.py\n"
+        "${claude_plugin_root}/scripts/lower.py\n"
+        "scripts/bare.py\n"
+    )
+
+    resolved = resolve_claude_plugin_root(content, plugin_root)
+
+    assert resolved == (
+        f"{plugin_root.resolve().as_posix()}/scripts/run.py\n"
+        "${claude_plugin_root}/scripts/lower.py\n"
+        "scripts/bare.py\n"
+    )
+
+
+def test_resolve_claude_plugin_root_uses_yaml_safe_windows_separators() -> None:
+    """Windows roots do not inject YAML escape sequences into agent content."""
+    plugin_root = MagicMock(spec=Path)
+    plugin_root.resolve.return_value.as_posix.return_value = "C:/Users/dev/plugin"
+
+    resolved = resolve_claude_plugin_root(
+        'path: "${CLAUDE_PLUGIN_ROOT}/scripts/run.py"\n',
+        plugin_root,
+    )
+
+    assert resolved == 'path: "C:/Users/dev/plugin/scripts/run.py"\n'
 
 
 # ---------------------------------------------------------------------------

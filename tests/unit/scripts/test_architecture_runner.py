@@ -606,7 +606,6 @@ contracts-tooling-dependency-identity
 contracts-tooling-frontmatter-yaml
 contracts-tooling-generation-footer
 install-deployment-approval-outcome-routing
-install-deployment-agent-source-inventory
 install-deployment-audit-policy-discovery
 install-deployment-audit-replay
 install-deployment-base-integrator

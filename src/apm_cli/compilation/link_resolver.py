@@ -17,6 +17,14 @@ from urllib.parse import urlparse
 from apm_cli.utils.path_security import PathTraversalError, ensure_path_within
 from apm_cli.utils.paths import portable_link_relpath
 
+CLAUDE_PLUGIN_ROOT = "${CLAUDE_PLUGIN_ROOT}"
+
+
+def resolve_claude_plugin_root(content: str, plugin_root: Path) -> str:
+    """Expand Claude's exact plugin-root token to the materialized package."""
+    return content.replace(CLAUDE_PLUGIN_ROOT, plugin_root.resolve().as_posix())
+
+
 # CRITICAL: Shadow Click commands to prevent namespace collision
 set = builtins.set
 list = builtins.list
@@ -80,6 +88,7 @@ class UnifiedLinkResolver:
         # the generalization safely.
         self.package_root: Path | None = None
         self.deployment_package_root: Path | None = None
+        self.claude_plugin_root: Path | None = None
 
     def register_contexts(self, primitives) -> None:
         """Build registry of all available context files.
@@ -145,6 +154,8 @@ class UnifiedLinkResolver:
             deployment_package_root=self.deployment_package_root,
         )
 
+        if self.claude_plugin_root is not None:
+            content = resolve_claude_plugin_root(content, self.claude_plugin_root)
         return self._rewrite_markdown_links(content, ctx)
 
     def resolve_links_for_compilation(

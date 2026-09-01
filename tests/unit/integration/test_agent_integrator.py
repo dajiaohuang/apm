@@ -3,11 +3,16 @@
 import tempfile
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
-from apm_cli.install.deployable_source_plan import DeployableSourcePlan
 from apm_cli.integration import AgentIntegrator
-from apm_cli.models.apm_package import APMPackage, GitReferenceType, PackageInfo, ResolvedReference
+from apm_cli.models.apm_package import (
+    APMPackage,
+    GitReferenceType,
+    PackageInfo,
+    PackageType,
+    ResolvedReference,
+)
 from apm_cli.utils.diagnostics import (
     CATEGORY_AGENT_LOSSY_COMPILATION,
     CATEGORY_WARNING,
@@ -509,18 +514,15 @@ This is a skill, not an agent.""")
         assert "SKILL.md" not in found_names
         assert "skill.md" not in found_names
 
-    def test_find_agent_files_requires_frontmatter_for_plain_md(self):
-        """Plain Markdown needs agent frontmatter to be an agent."""
+    def test_find_agent_files_includes_all_md(self):
+        """All .md files in .apm/agents/ are discovered — the directory
+        already implies type, so no name-based filtering."""
         package_dir = self.project_root / "package"
         apm_agents = package_dir / ".apm" / "agents"
         apm_agents.mkdir(parents=True)
 
-        (apm_agents / "planner.md").write_text(
-            "---\nname: planner\ndescription: Plans implementation work\n---\n# Planner agent"
-        )
-        (apm_agents / "coder.md").write_text(
-            "---\nname: coder\ndescription: Implements approved plans\n---\n# Coder agent"
-        )
+        (apm_agents / "planner.md").write_text("# Planner agent")
+        (apm_agents / "coder.md").write_text("# Coder agent")
         (apm_agents / "README.md").write_text("# Docs")
         (apm_agents / "CHANGELOG.md").write_text("# Changes")
         (apm_agents / "LICENSE.md").write_text("MIT")
@@ -529,19 +531,14 @@ This is a skill, not an agent.""")
         agents = self.integrator.find_agent_files(package_dir)
         names = {a.name for a in agents}
 
-        assert names == {"planner.md", "coder.md"}
-
-    def test_find_agent_files_accepts_bom_prefixed_plain_agent(self):
-        """BOM-prefixed Markdown routes through canonical frontmatter parsing."""
-        package_dir = self.project_root / "package"
-        apm_agents = package_dir / ".apm" / "agents"
-        apm_agents.mkdir(parents=True)
-        agent = apm_agents / "planner.md"
-        agent.write_bytes(
-            b"\xef\xbb\xbf---\nname: planner\ndescription: Plans implementation work\n---\n# Planner\n"
-        )
-
-        assert self.integrator.find_agent_files(package_dir) == [agent]
+        assert names == {
+            "planner.md",
+            "coder.md",
+            "README.md",
+            "CHANGELOG.md",
+            "LICENSE.md",
+            "CONTRIBUTING.md",
+        }
 
     def test_find_agent_files_discovers_nested_subdirectories(self):
         """find_agent_files uses rglob so agents in subdirs are found."""
@@ -552,9 +549,7 @@ This is a skill, not an agent.""")
 
         (apm_agents / "top-level.agent.md").write_text("# Top")
         (nested / "nested.agent.md").write_text("# Nested agent.md")
-        (nested / "plain-nested.md").write_text(
-            "---\nname: plain-nested\ndescription: Nested plain agent\n---\n# Nested plain"
-        )
+        (nested / "plain-nested.md").write_text("# Nested plain")
 
         agents = self.integrator.find_agent_files(package_dir)
         names = {a.name for a in agents}
@@ -563,109 +558,76 @@ This is a skill, not an agent.""")
         assert "nested.agent.md" in names
         assert "plain-nested.md" in names
 
-    def test_nested_agent_source_filters_resources_and_flattens_agent_path(self):
-        """Nested resources are rejected while legacy agent output stays flat."""
+    def test_legacy_plugin_root_resolves_for_plain_codex_and_kiro_targets(self):
+        """Every target renders agent content through the shared resolver."""
+        import toml
+
         from apm_cli.integration.targets import KNOWN_TARGETS
 
-        package_dir = self.project_root / "package"
-        agent_dir = package_dir / ".apm" / "agents" / "my-agent"
-        (agent_dir / "guides").mkdir(parents=True)
-        (agent_dir / "scripts").mkdir()
-        (agent_dir / "my-agent.md").write_text(
-            "---\nname: my-agent\ndescription: Test agent\n---\nUse scripts/helper.py.\n"
+        package_dir = self.project_root / "apm_modules" / "_local" / "plugin"
+        agents_dir = package_dir / ".apm" / "agents"
+        agents_dir.mkdir(parents=True)
+        source = agents_dir / "builder.md"
+        source.write_text(
+            "---\nname: builder\ndescription: Builds assets\n---\n"
+            "Run `${CLAUDE_PLUGIN_ROOT}/scripts/build.py`.\n",
+            encoding="utf-8",
         )
-        (agent_dir / "guides" / "reference-doc.md").write_text("# Reference\n")
-        (agent_dir / "scripts" / "helper.py").write_text("print('helper')\n")
-
-        package = APMPackage(name="test-pkg", version="1.0.0", package_path=package_dir)
+        package = APMPackage(name="plugin", version="1.0.0", package_path=package_dir)
         package_info = PackageInfo(
             package=package,
             install_path=package_dir,
-            resolved_reference=ResolvedReference(
-                original_ref="main",
-                ref_type=GitReferenceType.BRANCH,
-                resolved_commit="abc123",
-                ref_name="main",
-            ),
-            installed_at=datetime.now().isoformat(),
+            package_type=PackageType.MARKETPLACE_PLUGIN,
         )
-        diagnostics = DiagnosticCollector()
-        source_plan = DeployableSourcePlan.create(
-            package_info,
-            [KNOWN_TARGETS["copilot"]],
-            skill_subset=None,
-            hooks_approved=False,
-            canvas_approved=False,
-            skip_bin=True,
+        (self.project_root / ".codex").mkdir()
+        (self.project_root / ".kiro").mkdir()
+
+        expected_root = str(package_dir.resolve())
+        for target_name in ("copilot", "codex", "kiro"):
+            result = self.integrator.integrate_agents_for_target(
+                KNOWN_TARGETS[target_name],
+                package_info,
+                self.project_root,
+            )
+            assert result.files_integrated == 1
+            output = result.target_paths[0].read_text(encoding="utf-8")
+            if target_name == "codex":
+                output = toml.loads(output)["developer_instructions"]
+            assert f"{expected_root}/scripts/build.py" in output
+            assert "${CLAUDE_PLUGIN_ROOT}" not in output
+
+            adopted = self.integrator.integrate_agents_for_target(
+                KNOWN_TARGETS[target_name],
+                package_info,
+                self.project_root,
+            )
+            assert adopted.files_adopted == 1
+            assert adopted.files_skipped == 0
+
+    def test_plugin_root_token_is_not_resolved_for_apm_packages(self):
+        """Claude's plugin token remains literal outside legacy plugins."""
+        from apm_cli.integration.targets import KNOWN_TARGETS
+
+        package_dir = self.project_root / "package"
+        agents_dir = package_dir / ".apm" / "agents"
+        agents_dir.mkdir(parents=True)
+        (agents_dir / "builder.agent.md").write_text(
+            "Use ${CLAUDE_PLUGIN_ROOT}/scripts/build.py.\n",
+            encoding="utf-8",
+        )
+        package_info = PackageInfo(
+            package=APMPackage(name="package", version="1.0.0", package_path=package_dir),
+            install_path=package_dir,
+            package_type=PackageType.APM_PACKAGE,
         )
 
         result = self.integrator.integrate_agents_for_target(
             KNOWN_TARGETS["copilot"],
             package_info,
             self.project_root,
-            diagnostics=diagnostics,
-            source_plan=source_plan,
         )
 
-        expected = self.project_root / ".github" / "agents" / "my-agent.agent.md"
-        assert result.target_paths == [expected]
-        assert expected.is_file()
-        assert not (self.project_root / ".github" / "agents" / "reference-doc.agent.md").exists()
-        warnings = diagnostics.by_category().get(CATEGORY_WARNING, [])
-        assert len(warnings) == 1
-        assert warnings[0].detail == (
-            ".apm/agents/my-agent/guides/reference-doc.md, .apm/agents/my-agent/scripts/helper.py"
-        )
-
-    def test_prepare_agent_files_sanitizes_ignored_resource_diagnostic(self):
-        """Package-controlled diagnostic fields stay printable ASCII."""
-        package_dir = self.project_root / "package"
-        agent_dir = package_dir / ".apm" / "agents"
-        agent_dir.mkdir(parents=True)
-        (agent_dir / "agent.agent.md").write_text("# Agent\n")
-        (agent_dir / "helper\nscript.py").write_text("print('helper')\n")
-        diagnostics = DiagnosticCollector()
-
-        files = self.integrator.prepare_agent_files(
-            package_dir,
-            "unsafe\npackage",
-            diagnostics,
-        )
-
-        assert [path.name for path in files] == ["agent.agent.md"]
-        warnings = diagnostics.by_category()[CATEGORY_WARNING]
-        assert warnings[0].package == "unsafe?package"
-        assert warnings[0].detail == ".apm/agents/helper?script.py"
-        assert "Package required runtime resources as a skill bundle" in warnings[0].message
-
-    def test_prepare_agent_files_caps_ignored_resource_detail(self):
-        """Ignored-resource diagnostics stay bounded for large bundles."""
-        package_dir = self.project_root / "package"
-        agent_dir = package_dir / ".apm" / "agents"
-        agent_dir.mkdir(parents=True)
-        for index in range(25):
-            (agent_dir / f"resource-{index:02}.txt").write_text("resource\n")
-        diagnostics = DiagnosticCollector()
-
-        self.integrator.prepare_agent_files(package_dir, "large-package", diagnostics)
-
-        warning = diagnostics.by_category()[CATEGORY_WARNING][0]
-        assert warning.detail.count(".apm/agents/resource-") == 20
-        assert warning.detail.endswith(", ... (+5 more)")
-
-    def test_prepare_agent_files_fallback_keeps_paths_out_of_summary(self):
-        """Fallback warnings stay concise when no verbose collector exists."""
-        package_dir = self.project_root / "package"
-        agent_dir = package_dir / ".apm" / "agents"
-        agent_dir.mkdir(parents=True)
-        (agent_dir / "helper.py").write_text("print('helper')\n")
-
-        with patch("apm_cli.integration.agent_integrator._rich_warning") as warning:
-            self.integrator.prepare_agent_files(package_dir, "test-package")
-
-        message = warning.call_args.args[0]
-        assert "helper.py" not in message
-        assert "verbose output" not in message
+        assert "${CLAUDE_PLUGIN_ROOT}" in result.target_paths[0].read_text(encoding="utf-8")
 
     def test_get_target_filename_plain_md(self):
         """Plain .md files get renamed to .agent.md for .github/agents/."""

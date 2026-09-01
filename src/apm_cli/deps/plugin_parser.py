@@ -763,7 +763,9 @@ def _substitute_plugin_root(
 def resolve_plugin_root_placeholders(value: Any, plugin_path: Path) -> Any:
     """Resolve plugin-root placeholders in an in-memory manifest value."""
     if isinstance(value, str):
-        return value.replace("${CLAUDE_PLUGIN_ROOT}", str(plugin_path.resolve()))
+        from apm_cli.compilation.link_resolver import resolve_claude_plugin_root
+
+        return resolve_claude_plugin_root(value, plugin_path)
     if isinstance(value, dict):
         return {
             key: resolve_plugin_root_placeholders(item, plugin_path) for key, item in value.items()
@@ -1149,8 +1151,8 @@ def _map_plugin_artifacts(
 
     # Map agents/
     # Unlike skills (which are named directories containing SKILL.md), agents
-    # are flat files -- each admitted Markdown file is one agent. Always merge
-    # directory contents directly into .apm/agents/.
+    # are flat files  -- each .md is one agent.  So we always merge directory
+    # contents directly into .apm/agents/ (no nesting by dir name).
     agent_sources = _resolve_sources("agents", "agents")
     if agent_sources:
         target_agents = apm_dir / "agents"

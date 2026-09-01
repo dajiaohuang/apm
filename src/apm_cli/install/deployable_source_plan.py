@@ -118,10 +118,8 @@ class DeployableSourcePlan:
             add_matching_files(source_root / ".apm" / "prompts", "*.prompt.md")
 
         if "agents" in target_primitives:
-            from apm_cli.integration.agent_integrator import AgentIntegrator
-
-            for path in AgentIntegrator().find_agent_files(source_root):
-                add_file(path)
+            add_direct_matching_files(source_root, "*.agent.md")
+            add_matching_files(source_root / ".apm" / "agents", "*.md")
 
         if "instructions" in target_primitives:
             add_matching_files(source_root / ".apm" / "instructions", "*.instructions.md")

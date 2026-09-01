@@ -76,8 +76,9 @@
     {
       "id": "legacy-plugin-skill-membership",
       "decision": "Legacy plugin declared-skill membership and plugin-root placeholder expansion",
-      "owner": "deps/plugin_parser.py (_map_plugin_artifacts, normalized_plugin_skill_sources, resolve_plugin_root_placeholders)",
+      "owner": "deps/plugin_parser.py (membership facade) and compilation/link_resolver.py (token expansion)",
       "selectors": [
+        "src/apm_cli/compilation/link_resolver.py",
         "src/apm_cli/deps/plugin_parser.py",
         "src/apm_cli/integration/skill_integrator.py"
       ],

@@ -128,10 +128,6 @@ GitHub Copilot (CLI and IDE).
   CLI can invoke them from any working directory.
 - **Global compile.** `apm compile -g` can also render global instructions to
   `~/.copilot/AGENTS.md` for root-context readers that honor `AGENTS.md`.
-:::note[Planned]
-Agent Plugins 1.0 targets full bundle preservation. Today APM preserves bundles
-natively only for Copilot, and only for skills and MCP servers.
-:::
 
 ## claude
 

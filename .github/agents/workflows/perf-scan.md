@@ -17,7 +17,7 @@ a GitHub Issue on every run so the team has a daily record.
 The agent operates as the `performance-expert` persona defined in
 `.github/agents/performance-expert.agent.md`. When scanning non-transport
 code (i.e., anything outside `src/apm_cli/transport/`), it also loads the
-pattern catalogue from `.apm/agents/references/algorithmic-patterns.md`.
+pattern catalogue from `.github/agents/algorithmic-patterns.agent.md`.
 
 ## Anti-patterns checked
 
@@ -67,5 +67,5 @@ This ensures the daily run is always visible in the issue tracker.
 
 - Workflow definition: `.github/workflows/perf-scan.md`
 - Performance agent: `.github/agents/performance-expert.agent.md`
-- Pattern catalogue: `.apm/agents/references/algorithmic-patterns.md`
+- Pattern catalogue: `.github/agents/algorithmic-patterns.agent.md`
 - Benchmark examples: `tests/benchmarks/test_perf_benchmarks.py`

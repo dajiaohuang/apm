@@ -14,6 +14,13 @@ how to install it:
 | `plugin.json` (no `$schema`) / `.claude-plugin/` | Claude plugin collection | Dissect via plugin artifact mapping |
 | `plugin.json` with an Agent Plugins `$schema` | Portable Agent Plugin | Acquired and locked as one opaque unit; registered when effective targets include Copilot and admission gates pass. Excluded targets create no native registration or loose primitive projection. APM does not require the runtime during lifecycle operations; loading requires supported Copilot CLI 1.0.81 or newer |
 
+Legacy Claude plugin collections remain materialized under `apm_modules`; APM
+projects their agents into target discovery directories. For legacy targets,
+APM resolves Claude's official `${CLAUDE_PLUGIN_ROOT}` token and rewrites inline
+Markdown links to existing package assets. A manifest-declared agent directory
+recursively treats every Markdown file as an agent. Declare exact agent files
+for mixed directories.
+
 For Agent Plugins with the same declared name, a direct dependency wins over a
 transitive dependency. APM refuses same-precedence collisions and does not
 silently repoint a ledger-recorded owner to a transitive claimant.
@@ -340,17 +347,6 @@ supported top-level harness directories: `.agents`, `.apm`, `.claude`,
 ### 2. Agent (`*.agent.md`)
 
 Chat persona configuration. Place in `.apm/agents/`.
-
-Legacy integration flattens nested agent definitions for flat-file harnesses
-because they may not discover nested agents. Plain `.md`
-files under `.apm/agents/` must declare non-empty `name` and `description`
-fields in YAML frontmatter. Other Markdown and non-Markdown sibling resources
-are skipped with one actionable warning; use `--verbose` to list the paths.
-Package runtime resources in a skill bundle.
-
-Full bundle preservation is planned for Agent Plugins 1.0; it is not current
-legacy projection behavior. Today APM preserves bundles natively only for
-Copilot, and only for skills and MCP servers.
 
 ```yaml
 ---
@@ -879,7 +875,7 @@ is a hard error -- run `migrate` to consolidate.
 
 ### Full guide
 
-See [docs/guides/marketplace-authoring](../../../../../docs/src/content/docs/guides/marketplace-authoring.md)
+See the [marketplace publishing guide](../../../../../docs/src/content/docs/producer/publish-to-a-marketplace.md)
 for the complete maintainer workflow (quickstart, version ranges, `check`,
 `doctor`, and `outdated`).
 

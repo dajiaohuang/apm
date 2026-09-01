@@ -453,17 +453,13 @@ class TestAgentIntegratorFindFiles:
         assert any(f.name == "reviewer.agent.md" for f in files)
 
     def test_finds_plain_md_in_apm_agents_subdir(self, tmp_path: Path) -> None:
-        """Plain .md files need agent frontmatter."""
+        """Plain .md files in .apm/agents/ are also included."""
         apm_agents = tmp_path / ".apm" / "agents"
         apm_agents.mkdir(parents=True)
-        (apm_agents / "helper.md").write_text(
-            "---\nname: helper\ndescription: Helps with tasks\n---\n# Helper"
-        )
-        (apm_agents / "missing-description.md").write_text("---\nname: helper\n---\n# Helper")
+        (apm_agents / "helper.md").write_text("# Helper")
         integrator = AgentIntegrator()
         files = integrator.find_agent_files(tmp_path)
-        names = {file.name for file in files}
-        assert names == {"helper.md"}
+        assert any(f.name == "helper.md" for f in files)
 
     def test_finds_chatmode_in_apm_chatmodes_subdir(self, tmp_path: Path) -> None:
         apm_chatmodes = tmp_path / ".apm" / "agents"
