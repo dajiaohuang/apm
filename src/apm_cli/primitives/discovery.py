@@ -476,18 +476,11 @@ def _scan_patterns(
     for _primitive_type, type_patterns in patterns.items():
         all_patterns.extend(type_patterns)
 
-    files = inventory.files_within(base_dir) if inventory is not None else None
-    if files is None:
-        base_str = str(base_dir)
-        walked: list[Path] = []
-        for dirpath, dirnames, filenames in os.walk(base_str, followlinks=False):
-            if ignore is not None:
-                current = Path(dirpath)
-                dirnames[:] = [
-                    name for name in dirnames if not ignore.is_ignored(current / name, is_dir=True)
-                ]
-            walked.extend(Path(dirpath) / filename for filename in filenames)
-        files = tuple(walked)
+    if inventory is None:
+        from ..compilation.inventory import CompileInventory
+
+        inventory = CompileInventory.collect(base_dir)
+    files = inventory.files_within(base_dir)
 
     for file_path in files:
         if ignore is not None and ignore.is_ignored(file_path, is_dir=False):
@@ -547,7 +540,13 @@ def scan_directory_with_source(
         )
 
     # Check for SKILL.md in the dependency root
-    _discover_skill_in_directory(directory, collection, source, ignore=ignore)
+    _discover_skill_in_directory(
+        directory,
+        collection,
+        source,
+        ignore=ignore,
+        inventory=inventory,
+    )
 
 
 def _discover_local_skill(
@@ -584,6 +583,7 @@ def _discover_skill_in_directory(
     collection: PrimitiveCollection,
     source: str,
     ignore: object | None = None,
+    inventory: CompileInventory | None = None,
 ) -> None:
     """Discover SKILL.md in a package directory.
 
@@ -593,6 +593,8 @@ def _discover_skill_in_directory(
         source (str): Source identifier for the skill.
         ignore: Optional package ignore spec.
     """
+    if inventory is not None and inventory.nested_repository_root_for(directory) is not None:
+        return
     skill_path = directory / "SKILL.md"
     if ignore is not None and ignore.is_ignored(skill_path, is_dir=False):
         return
@@ -699,107 +701,21 @@ def find_primitive_files(
     from ..utils.apmignore import ApmIgnoreSpec
 
     ignore = ApmIgnoreSpec.load(base_path)
-    base_str = str(base_path)
-    base_prefix_len = len(base_str) + 1  # +1 for the trailing separator
-    sep = os.sep
-
-    # Pre-split each glob pattern once per call instead of once per file
-    # so a 80k-file walk costs O(patterns) splits, not O(patterns * files).
     pattern_tuples: list[tuple[str, ...]] = [
         tuple(p for p in pat.split("/") if p) for pat in patterns
     ]
+    if inventory is None:
+        from ..compilation.inventory import CompileInventory
 
-    all_files: list[Path] = []
-    files_visited = 0
-
-    if inventory is not None:
-        return _find_primitive_inventory_files(
-            inventory,
-            base_path,
-            pattern_tuples,
-            exclude_patterns,
-            started,
-            ignore=ignore,
-        )
-
-    for root, dirs, files in os.walk(base_str):
-        # Prune excluded directories BEFORE descending. ``DEFAULT_SKIP_DIRS``
-        # check is a frozenset lookup; the ``_exclude_matches_dir`` call
-        # only fires when the caller actually supplied exclude patterns.
-        current = Path(root)
-        dirs[:] = sorted(
-            d
-            for d in dirs
-            if d not in DEFAULT_SKIP_DIRS
-            and not (
-                exclude_patterns and _exclude_matches_dir(current / d, base_path, exclude_patterns)
-            )
-            and not ignore.is_ignored(current / d, is_dir=True)
-        )
-
-        # Compute the relative directory once per ``os.walk`` step using
-        # string slicing on the already-resolved base path. This avoids
-        # the per-component ``stat`` syscalls that ``Path.resolve`` /
-        # ``Path.relative_to`` would issue per FILE under the old
-        # ``portable_relpath(file_path, base_path)`` call site.
-        if root == base_str:
-            rel_root = ""
-            rel_root_parts: tuple[str, ...] = ()
-        else:
-            rel_root = root[base_prefix_len:].replace(sep, "/")
-            rel_root_parts = tuple(p for p in rel_root.split("/") if p)
-
-        # Sort files for deterministic discovery order across platforms.
-        # Defer all Path() construction until AFTER a pattern matches --
-        # in a typical tree most files are non-matches and don't need
-        # the allocation. ``current`` is built lazily on first match.
-        sorted_files = sorted(files)
-        files_visited += len(sorted_files)
-        current_path: Path | None = None
-        for file_name in sorted_files:
-            path_parts = (*rel_root_parts, file_name)
-            matched_pattern = False
-            for pattern_parts in pattern_tuples:
-                if _glob_match_parts(path_parts, pattern_parts):
-                    matched_pattern = True
-                    break
-            if not matched_pattern:
-                continue
-            if current_path is None:
-                current_path = Path(root)
-            file_path = current_path / file_name
-            # File-level exclude: a pattern like "**/*.draft.md" should drop
-            # individual files even when their parent directory is included.
-            if exclude_patterns and should_exclude(file_path, base_path, exclude_patterns):
-                logger.debug("Excluded by pattern: %s", file_path)
-                continue
-            if ignore.is_ignored(file_path, is_dir=False):
-                logger.debug("Excluded by package ignore spec: %s", file_path)
-                continue
-            all_files.append(file_path)
-
-    # Filter out directories and symlinks. We deliberately do NOT
-    # pre-open every match to test readability -- ``parse_primitive_file``
-    # downstream already handles PermissionError / UnicodeDecodeError
-    # gracefully, and the extra open() per match doubled syscall cost
-    # without catching anything new (see #1533 review).
-    valid_files = []
-    for file_path in all_files:
-        if not file_path.is_file():
-            continue
-        if file_path.is_symlink():
-            logger.debug("Rejected symlink: %s", file_path)
-            continue
-        valid_files.append(file_path)
-
-    perf_stats.record_walk(
-        base_dir=str(base_dir),
-        pattern_count=len(patterns),
-        duration_s=time.perf_counter() - started,
-        files_visited=files_visited,
-        files_matched=len(valid_files),
+        inventory = CompileInventory.collect(base_path, exclude_patterns=exclude_patterns)
+    return _find_primitive_inventory_files(
+        inventory,
+        base_path,
+        pattern_tuples,
+        exclude_patterns,
+        started,
+        ignore=ignore,
     )
-    return valid_files
 
 
 def _find_primitive_inventory_files(
