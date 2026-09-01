@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Legacy Claude plugin agents now resolve `${CLAUDE_PLUGIN_ROOT}` to their
   retained package under `apm_modules` across all projected targets, including
   Codex and Kiro. (closes #2692)
+- `apm pack --check-clean` is now read-only and detects marketplace drift
+  without overwriting artifacts. Release pipelines that also produce artifacts
+  must run `apm pack` separately; see
+  [Releasing from any CI](docs/src/content/docs/producer/releasing-from-any-ci.md#the-canonical-sequence).
+  (by @danielmeppiel, closes #2727, #2730)
 - Distributed `apm compile` now reconciles existing managed-section
   `AGENTS.md` files without overwriting hand-authored content, generates new
   placements safely, and never discovers, writes, or cleans content across
