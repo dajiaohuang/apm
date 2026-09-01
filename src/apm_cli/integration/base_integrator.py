@@ -789,8 +789,8 @@ class BaseIntegrator:
                         getattr(package_info, "package_type", None)
                         is PackageType.MARKETPLACE_PLUGIN
                     ):
-                        self.link_resolver.claude_plugin_root = (
-                            self.link_resolver.deployment_package_root
+                        self.link_resolver.claude_plugin_root = Path(
+                            package_info.claude_plugin_root or install_path
                         )
         except Exception:
             self.link_resolver = None

@@ -206,6 +206,8 @@ _RID_SKILL = "marketplace-integrations-legacy-skill-membership"
 
 _SKILL_INTEGRATOR = "src/apm_cli/integration/skill_integrator.py"
 _PLUGIN_ROOT_OWNER = "src/apm_cli/compilation/link_resolver.py"
+_BASE_INTEGRATOR = "src/apm_cli/integration/base_integrator.py"
+_DRIFT = "src/apm_cli/install/drift.py"
 
 
 _SKILL_SUBSET_LEXICAL = re.compile(
@@ -248,6 +250,26 @@ def _check_legacy_skill_membership(provider: FactsProvider) -> tuple[Violation, 
             _PLUGIN_PARSER,
             ("resolve_claude_plugin_root(value, plugin_path)",),
             "plugin_parser must delegate plugin-root expansion to link_resolver",
+        )
+    )
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_SKILL,
+            _BASE_INTEGRATOR,
+            ("package_info.claude_plugin_root or install_path",),
+            "integrators must consume the durable Claude plugin root",
+        )
+    )
+    findings.extend(
+        _require_subs(
+            provider,
+            inv,
+            _RID_SKILL,
+            _DRIFT,
+            ("package_info.claude_plugin_root = dependency_ref.get_install_path(",),
+            "drift replay must preserve the live Claude plugin root",
         )
     )
 

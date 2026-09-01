@@ -745,6 +745,7 @@ def test_run_replay_threads_dep_target_subset(monkeypatch, tmp_path):
             {
                 "target_names": sorted(t.name for t in kwargs.get("targets", [])),
                 "dep_target_subset": kwargs.get("dep_target_subset"),
+                "claude_plugin_root": args[0].claude_plugin_root,
             }
         )
         return {"deployed_files": []}
@@ -773,6 +774,8 @@ def test_run_replay_threads_dep_target_subset(monkeypatch, tmp_path):
     assert call["dep_target_subset"] == ["claude"], (
         f"dep_target_subset should be ['claude'], got {call['dep_target_subset']}"
     )
+    expected_plugin_root = dep.to_dependency_ref().get_install_path(project_root / "apm_modules")
+    assert call["claude_plugin_root"] == expected_plugin_root
 
 
 def test_run_replay_threads_locked_skill_subset(

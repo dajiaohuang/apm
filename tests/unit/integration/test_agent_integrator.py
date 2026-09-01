@@ -620,6 +620,7 @@ This is a skill, not an agent.""")
             package=APMPackage(name="plugin", version="1.0.0", package_path=replay_root),
             install_path=replay_root,
             deployment_package_root=deployment_root,
+            claude_plugin_root=deployment_root,
             package_type=PackageType.MARKETPLACE_PLUGIN,
         )
 
