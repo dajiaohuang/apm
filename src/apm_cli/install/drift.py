@@ -567,7 +567,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
         if config.modules_root is not None
         else project_root / "apm_modules"
     )
-    live_modules_dir = project_root / "apm_modules"
+    live_root = project_root / "apm_modules"
 
     # Honor apm.yml's ``target:`` field so multi-target projects replay
     # into all governed roots (not just whichever directory happens to
@@ -638,7 +638,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                         apm_modules_dir,
                         cache_only=config.cache_only,
                         lockfile=lock,
-                        live_modules_dir=live_modules_dir,
+                        live_modules_dir=live_root,
                         downloader=downloader,
                         registry_resolver=registry_resolver,
                         registries=registries,
@@ -660,9 +660,7 @@ def run_replay(config: ReplayConfig, logger: CheckLogger) -> Path:
                     package_info.deployment_package_root = dependency_ref.get_install_path(
                         scratch_root / "apm_modules"
                     )
-                    package_info.claude_plugin_root = dependency_ref.get_install_path(
-                        live_modules_dir
-                    )
+                    package_info.claude_plugin_root = dependency_ref.get_install_path(live_root)
                 dep_key = lock_dep.get_unique_key()
 
                 integrate_package_primitives(
