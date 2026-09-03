@@ -22,6 +22,10 @@ from scripts.architecture_linter.checks.install_base_integrator_and_contraction 
     check_target_file_contraction,
 )
 from scripts.architecture_linter.checks.install_deployment_shared import _rule
+from scripts.architecture_linter.checks.install_dry_run_plan import (
+    _GUARD_DRY_RUN_PLAN,
+    check_prospective_dry_run_plan,
+)
 from scripts.architecture_linter.checks.install_frozen_and_audit import (
     _GUARD_AUDIT_REPLAY,
     _GUARD_FROZEN,
@@ -38,9 +42,11 @@ from scripts.architecture_linter.checks.install_package_target_authorization imp
 )
 from scripts.architecture_linter.checks.install_policy_intent import EXTRA_RULES
 from scripts.architecture_linter.checks.install_request_and_source import (
+    _GUARD_INSTALL_SCOPE,
     _GUARD_OUTCOME,
     _GUARD_REQUEST_DEFAULTS,
     _GUARD_SOURCE_PLAN,
+    check_install_scope_selection,
     check_outcome,
     check_request_defaults,
     check_source_plan,
@@ -90,6 +96,11 @@ RULES: tuple[Rule, ...] = (
         check_frozen,
     ),
     _rule(
+        _GUARD_DRY_RUN_PLAN,
+        "Prospective dry-run state and selection stay owned by ProspectiveInstallPlan.",
+        check_prospective_dry_run_plan,
+    ),
+    _rule(
         _GUARD_SOURCE_PLAN,
         "Authorized deployable source paths come from install/deployable_source_plan.py.",
         check_source_plan,
@@ -98,6 +109,11 @@ RULES: tuple[Rule, ...] = (
         _GUARD_REQUEST_DEFAULTS,
         "Install invocation option defaults stay owned by install/request.py.",
         check_request_defaults,
+    ),
+    _rule(
+        _GUARD_INSTALL_SCOPE,
+        "Direct MCP installs consume the install command's single scope decision.",
+        check_install_scope_selection,
     ),
     _rule(
         _GUARD_BASE_INTEGRATOR,

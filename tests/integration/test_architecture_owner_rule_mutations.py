@@ -148,6 +148,56 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Generated footer owner loses the one canonical builder definition.",
     ),
     MutationCase(
+        guard_id="contracts-tooling-lockfile-read",
+        rule_id="contracts-tooling-lockfile-read",
+        path="src/apm_cli/deps/lockfile.py",
+        old="    if read_only:\n",
+        new="    if False and read_only:\n",
+        intent="Read-only lockfile resolution stops guarding the mutating migration path.",
+    ),
+    MutationCase(
+        guard_id="contracts-tooling-lockfile-timestamp",
+        rule_id="contracts-tooling-lockfile-timestamp",
+        path="src/apm_cli/integration/mcp_integrator.py",
+        old="_log = logging.getLogger(__name__)",
+        new="_log = logging.getLogger(__name__)\nMCPIntegrator.generated_at = None",
+        intent="An MCP consumer writes lockfile timestamp metadata outside its owner.",
+    ),
+    MutationCase(
+        guard_id="contracts-tooling-lockfile-timestamp-constructor",
+        rule_id="contracts-tooling-lockfile-timestamp-constructor",
+        path="src/apm_cli/integration/mcp_integrator.py",
+        old="_log = logging.getLogger(__name__)",
+        new=(
+            "_log = logging.getLogger(__name__)\nLockFile(generated_at='2026-01-01T00:00:00+00:00')"
+        ),
+        intent="An MCP consumer sets timestamp metadata through the LockFile constructor.",
+    ),
+    MutationCase(
+        guard_id="contracts-tooling-lockfile-timestamp-fallback",
+        rule_id="contracts-tooling-lockfile-timestamp-fallback",
+        path="src/apm_cli/bundle/agent_plugin_exporter.py",
+        old="import os",
+        new='import os\n\nos.environ.get("SOURCE_DATE_EPOCH")',
+        intent="An Agent Plugin consumer reimplements the reproducible timestamp fallback.",
+    ),
+    MutationCase(
+        guard_id="contracts-tooling-root-context-write-eligibility",
+        rule_id="contracts-tooling-root-context-write-eligibility",
+        path="src/apm_cli/compilation/agents_compiler.py",
+        old="and self._hand_authored_root_context_blocks_write(output_file)",
+        new="and False",
+        intent="Single-file compilation bypasses the root overwrite eligibility owner.",
+    ),
+    MutationCase(
+        guard_id="contracts-tooling-project-yaml-write-delegation",
+        rule_id="contracts-tooling-project-yaml-write-delegation",
+        path="src/apm_cli/utils/yaml_io.py",
+        old="    atomic_write_text(\n",
+        new="    write_text_lf(\n",
+        intent="The atomic project YAML writer bypasses the canonical atomic writer.",
+    ),
+    MutationCase(
         guard_id="hooks-integrations-copilot-cli-mcp-paths",
         rule_id="mutation_writes.copilot_cli_mcp_paths",
         path="src/apm_cli/adapters/client/copilot.py",
@@ -186,6 +236,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         old='_REGISTRY_TYPE_ALIASES = {"oci": "docker"}',
         new='_REGISTRY_TYPE_ALIASES = {"oci": "podman"}',
         intent="Shared adapter loses the canonical OCI-to-docker launcher alias.",
+    ),
+    MutationCase(
+        guard_id="hooks-integrations-mcp-passthrough-denylist",
+        rule_id="mutation_writes.mcp_passthrough_denylist",
+        path="src/apm_cli/models/dependency/mcp.py",
+        old='frozenset({"enabled", "environment", "http_headers", "id"})',
+        new='frozenset({"enabled", "http_headers", "id"})',
+        intent="Shared MCP model stops denying the OpenCode environment alias.",
     ),
     MutationCase(
         guard_id="hooks-integrations-mcp-target-selection",
@@ -236,12 +294,20 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="InstallService stops owning the frozen-install mutation preflight.",
     ),
     MutationCase(
+        guard_id="install-deployment-install-scope-selection",
+        rule_id="install-deployment-install-scope-selection",
+        path="src/apm_cli/commands/install.py",
+        old="user_scope=is_user_scope(scope)",
+        new="user_scope=False",
+        intent="Direct MCP target resolution stops consuming the command's scope decision.",
+    ),
+    MutationCase(
         guard_id="install-deployment-mcp-ownership-migration",
         rule_id="install-deployment-mcp-ownership-migration",
         path="src/apm_cli/install/mcp/ownership.py",
-        old="def migrate_legacy_project_target_servers(",
-        new="def migrate_legacy_project_target_servers_disabled(",
-        intent="Legacy MCP ownership-key migration loses its canonical function.",
+        old="def resolve_mcp_target_servers(",
+        new="def resolve_mcp_target_servers_disabled(",
+        intent="Legacy MCP target ownership adoption loses its canonical resolver.",
     ),
     MutationCase(
         guard_id="install-deployment-outcome",
@@ -258,6 +324,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         old="def resolve_effective_package_targets(",
         new="def resolve_effective_package_targets_disabled(",
         intent="Effective package-target authorization loses its single resolver.",
+    ),
+    MutationCase(
+        guard_id="install-deployment-prospective-dry-run-plan",
+        rule_id="install-deployment-prospective-dry-run-plan",
+        path="src/apm_cli/commands/install.py",
+        old="mcp_deps=list(prospective_plan.selected_mcp_dependencies) or None",
+        new="mcp_deps=mcp_deps if should_install_mcp else None",
+        intent="Dry-run policy checks bypass the plan-owned MCP selection.",
     ),
     MutationCase(
         guard_id="install-deployment-provenance-state",
@@ -348,6 +422,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Legacy plugin skill membership loses its normalization owner.",
     ),
     MutationCase(
+        guard_id="marketplace-integrations-metadata-enrichment",
+        rule_id="marketplace-integrations-metadata-enrichment",
+        path="src/apm_cli/marketplace/builder.py",
+        old="class MetadataEnrichmentResult(",
+        new="class MetadataEnrichmentResultX(",
+        intent="Marketplace metadata enrichment loses its canonical certification result.",
+    ),
+    MutationCase(
         guard_id="marketplace-integrations-native-registration",
         rule_id="marketplace-integrations-native-registration",
         path="src/apm_cli/copilot_plugins/capability.py",
@@ -394,6 +476,17 @@ MUTATIONS: tuple[MutationCase, ...] = (
         old="structural_errors: tuple[str, ...] = ()",
         new="structural_errors: tuple[str, ...] = ('placeholder',)",
         intent="Raw structural diagnostics stop originating empty in the model owner.",
+    ),
+    MutationCase(
+        guard_id="marketplace-integrations-source-admission",
+        rule_id="marketplace-integrations-source-admission",
+        path="src/apm_cli/marketplace/client.py",
+        old=("        host = source.host\n        host_info = AuthResolver.classify_host"),
+        new=(
+            "        host = _host_from_url(source.url)\n"
+            "        host_info = AuthResolver.classify_host"
+        ),
+        intent="Marketplace client reintroduces source-host parsing outside the owner.",
     ),
     MutationCase(
         guard_id="marketplace-integrations-tag-pattern",
@@ -478,6 +571,22 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="A manifest consumer reads raw targets instead of canonical_targets.",
     ),
     MutationCase(
+        guard_id="transport-platform-artifactory-full-commit-sha",
+        rule_id="transport-platform-artifactory-full-commit-sha",
+        path="src/apm_cli/utils/github_host.py",
+        old="    if is_full_commit_sha(ref):",
+        new="    if False and is_full_commit_sha(ref):",
+        intent="Artifactory archive routing stops consulting the full commit SHA owner.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-artifactory-netrc-isolation",
+        rule_id="transport-platform-artifactory-netrc-isolation",
+        path="src/apm_cli/deps/artifactory_entry.py",
+        old="                    with _NoNetrcSession() as session:",
+        new="                    with _requests.Session() as session:",
+        intent="Direct Artifactory entry requests regain ambient netrc credentials.",
+    ),
+    MutationCase(
         guard_id="transport-platform-git-cache-identity",
         rule_id="transport-platform-git-cache-identity",
         path="src/apm_cli/deps/shared_clone_cache.py",
@@ -538,6 +647,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         old="if not freshness_policy.allows_lock_seed:",
         new="if ctx.update_refs or ctx.refresh:",
         intent="Ref seeding makes a parallel freshness decision outside RefFreshnessPolicy.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-revision-pin-outcome",
+        rule_id="transport-platform-revision-pin-outcome",
+        path="src/apm_cli/commands/update.py",
+        old="logger.revision_pins_retained(resolution.skips)",
+        new="logger.revision_pins_retained(())",
+        intent="Update discards resolver-provided retained revision pins.",
     ),
     MutationCase(
         guard_id="transport-platform-self-update-resolution",

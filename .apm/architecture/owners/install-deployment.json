@@ -10,8 +10,8 @@
     },
     {
       "id": "legacy-mcp-ownership-key-migration",
-      "decision": "Legacy MCP runtime ownership-key migration",
-      "owner": "install/mcp/ownership.py (migrate_legacy_project_target_servers)",
+      "decision": "Legacy MCP target ownership migration and adoption",
+      "owner": "install/mcp/ownership.py",
       "selectors": ["src/apm_cli/install/mcp/ownership.py"],
       "guards": ["install-deployment-mcp-ownership-migration"]
     },
@@ -51,6 +51,13 @@
       "guards": ["install-deployment-frozen-mutation-eligibility"]
     },
     {
+      "id": "prospective-dry-run-install-plan",
+      "decision": "Prospective dry-run install plan",
+      "owner": "install/dry_run_plan.py (ProspectiveInstallPlan)",
+      "selectors": ["src/apm_cli/install/dry_run_plan.py"],
+      "guards": ["install-deployment-prospective-dry-run-plan"]
+    },
+    {
       "id": "authorized-deployable-source-paths",
       "decision": "Authorized deployable source paths",
       "owner": "install/deployable_source_plan.py (DeployableSourcePlan)",
@@ -61,11 +68,15 @@
       "id": "install-invocation-option-defaults",
       "decision": "Install invocation option defaults",
       "owner": "install/request.py (InstallRequest)",
-      "selectors": [
-        "src/apm_cli/install/request.py",
-        "src/apm_cli/commands/install.py"
-      ],
+      "selectors": ["src/apm_cli/install/request.py"],
       "guards": ["install-deployment-request-defaults"]
+    },
+    {
+      "id": "install-command-scope-selection",
+      "decision": "Install command scope selection",
+      "owner": "commands/install.py (install computes scope once)",
+      "selectors": ["src/apm_cli/commands/install.py"],
+      "guards": ["install-deployment-install-scope-selection"]
     },
     {
       "id": "file-level-deploy-sync-cleanup",

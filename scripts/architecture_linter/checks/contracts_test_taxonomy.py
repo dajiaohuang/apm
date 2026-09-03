@@ -13,6 +13,7 @@ their single registry allocation.
 
 from __future__ import annotations
 
+import ast
 import re
 from collections.abc import Sequence
 
@@ -68,6 +69,21 @@ _GUARD_APPLY_TO = "contracts-tooling-apply-to-placement"
 _GUARD_FRONTMATTER = "contracts-tooling-frontmatter-yaml"
 
 
+_GUARD_PROJECT_YAML_WRITES = "contracts-tooling-project-yaml-write-delegation"
+
+
+_GUARD_LOCKFILE_READ = "contracts-tooling-lockfile-read"
+
+
+_GUARD_LOCKFILE_TIMESTAMP = "contracts-tooling-lockfile-timestamp"
+
+
+_GUARD_LOCKFILE_TIMESTAMP_FALLBACK = "contracts-tooling-lockfile-timestamp-fallback"
+
+
+_GUARD_LOCKFILE_TIMESTAMP_CONSTRUCTOR = "contracts-tooling-lockfile-timestamp-constructor"
+
+
 _GUARD_GENERATION_FOOTER = "contracts-tooling-generation-footer"
 
 
@@ -75,6 +91,14 @@ _GUARD_APMIGNORE = "contracts-tooling-apmignore-membership"
 
 
 _SRC_PREFIX = "src/apm_cli/"
+
+_LOCKFILE_OWNER = "src/apm_cli/deps/lockfile.py"
+
+_LOCKFILE_CONSUMERS = (
+    "src/apm_cli/bundle/packer.py",
+    "src/apm_cli/bundle/plugin_exporter.py",
+    "src/apm_cli/bundle/agent_plugin_exporter.py",
+)
 
 
 def _facts_for(provider: FactsProvider, path: str, rule_id: str):
@@ -123,6 +147,243 @@ def _count_defs_across(provider: FactsProvider, prefix: str, pattern: re.Pattern
             continue
         total += _count_re(facts, pattern)
     return total
+
+
+def _named_calls(nodes: Sequence[ast.AST], name: str) -> tuple[ast.Call, ...]:
+    """Return direct calls to one unqualified function name."""
+    return tuple(
+        node
+        for node in nodes
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == name
+    )
+
+
+def _keyword_is_name(call: ast.Call, keyword_name: str, value_name: str) -> bool:
+    """Return whether a call has `keyword_name=value_name`."""
+    return any(
+        keyword.arg == keyword_name
+        and isinstance(keyword.value, ast.Name)
+        and keyword.value.id == value_name
+        for keyword in call.keywords
+    )
+
+
+def check_lockfile_read_resolution(provider: FactsProvider) -> tuple[Violation, ...]:
+    """Read-only lockfile consumers must route through one non-mutating owner."""
+    rule_id = _GUARD_LOCKFILE_READ
+    owner, owner_failures = _facts_for(provider, _LOCKFILE_OWNER, rule_id)
+    if owner_failures:
+        return tuple(owner_failures)
+    owner_index = owner.tree_index
+    if owner_index is None:
+        return (_summary(rule_id, _LOCKFILE_OWNER, "Lockfile owner has no Python syntax tree"),)
+
+    findings: list[Violation] = []
+    resolver = owner_index.function("resolve_lockfile_path_for_read")
+    if resolver is None:
+        findings.append(
+            _summary(rule_id, _LOCKFILE_OWNER, "Read-only lockfile resolver must have one owner")
+        )
+    else:
+        read_only_guards = tuple(
+            node
+            for node in owner_index.children(resolver)
+            if isinstance(node, ast.If)
+            and isinstance(node.test, ast.Name)
+            and node.test.id == "read_only"
+        )
+        migrate_calls = _named_calls(
+            owner_index.own_scope(resolver),
+            "migrate_lockfile_if_needed",
+        )
+        migration_is_read_only = bool(read_only_guards) and any(
+            call in owner_index.walk(read_only_guards[0]) for call in migrate_calls
+        )
+        if len(read_only_guards) != 1 or len(migrate_calls) != 1 or migration_is_read_only:
+            findings.append(
+                _summary(
+                    rule_id,
+                    _LOCKFILE_OWNER,
+                    "Read-only lockfile resolution must guard migration",
+                )
+            )
+
+    installed_paths = owner_index.function("LockFile.installed_paths_for_project")
+    if installed_paths is None:
+        findings.append(
+            _summary(rule_id, _LOCKFILE_OWNER, "LockFile installed-path reader must exist")
+        )
+    else:
+        installed_nodes = owner_index.own_scope(installed_paths)
+        installed_calls = _named_calls(installed_nodes, "resolve_lockfile_path_for_read")
+        rederives_legacy = any(
+            isinstance(node, ast.Name) and node.id == "LEGACY_LOCKFILE_NAME"
+            for node in installed_nodes
+        )
+        has_read_only_call = len(installed_calls) == 1 and any(
+            keyword.arg == "read_only"
+            and isinstance(keyword.value, ast.Constant)
+            and keyword.value.value is True
+            for keyword in installed_calls[0].keywords
+        )
+        if not has_read_only_call or rederives_legacy:
+            findings.append(
+                _summary(
+                    rule_id,
+                    _LOCKFILE_OWNER,
+                    "LockFile installed-path reads must delegate without re-deriving fallback",
+                )
+            )
+
+    for consumer_path in _LOCKFILE_CONSUMERS:
+        consumer, consumer_failures = _facts_for(provider, consumer_path, rule_id)
+        findings.extend(consumer_failures)
+        if consumer_failures or consumer.tree_index is None:
+            continue
+        imported = {
+            alias.name
+            for node in consumer.tree_index.nodes
+            if isinstance(node, ast.ImportFrom)
+            for alias in node.names
+        }
+        calls = _named_calls(
+            consumer.tree_index.nodes,
+            "resolve_lockfile_path_for_read",
+        )
+        routes_read_only = len(calls) == 1 and _keyword_is_name(
+            calls[0],
+            "read_only",
+            "dry_run",
+        )
+        if (
+            "resolve_lockfile_path_for_read" not in imported
+            or {"get_lockfile_path", "migrate_lockfile_if_needed"} & imported
+            or not routes_read_only
+        ):
+            findings.append(
+                _summary(
+                    rule_id,
+                    consumer_path,
+                    "Bundle lockfile reads must route through the read-only owner",
+                )
+            )
+    return tuple(findings)
+
+
+def _assigns_generated_at(target: ast.expr) -> bool:
+    """Return whether an assignment target writes lockfile timestamp metadata."""
+    if isinstance(target, ast.Attribute):
+        return target.attr == "generated_at"
+    if isinstance(target, (ast.List, ast.Tuple)):
+        return any(_assigns_generated_at(item) for item in target.elts)
+    return False
+
+
+def check_lockfile_timestamp_authority(provider: FactsProvider) -> tuple[Violation, ...]:
+    """Lockfile timestamp writes must stay inside the lockfile owner."""
+    rule_id = _GUARD_LOCKFILE_TIMESTAMP
+    findings: list[Violation] = []
+    for path in _python_paths(provider, _SRC_PREFIX):
+        if path == _LOCKFILE_OWNER:
+            continue
+        facts, failures = _facts_for(provider, path, rule_id)
+        findings.extend(failures)
+        if failures or facts.tree_index is None:
+            continue
+        for node in facts.tree_index.nodes:
+            if isinstance(node, ast.Assign):
+                targets = node.targets
+            elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+                targets = (node.target,)
+            else:
+                continue
+            if any(_assigns_generated_at(target) for target in targets):
+                findings.append(
+                    violation(
+                        rule_id,
+                        path,
+                        "Lockfile timestamp writes and fallback policy must route through "
+                        "deps/lockfile.py",
+                        line=node.lineno,
+                    )
+                )
+    return tuple(findings)
+
+
+def _constructs_lockfile_timestamp(node: ast.AST) -> bool:
+    """Return whether a LockFile constructor sets timestamp metadata."""
+    if not isinstance(node, ast.Call):
+        return False
+    if isinstance(node.func, ast.Name):
+        is_lockfile = node.func.id == "LockFile"
+    else:
+        is_lockfile = isinstance(node.func, ast.Attribute) and node.func.attr == "LockFile"
+    return is_lockfile and any(keyword.arg == "generated_at" for keyword in node.keywords)
+
+
+def check_lockfile_timestamp_constructor(provider: FactsProvider) -> tuple[Violation, ...]:
+    """Lockfile timestamp construction must stay inside its owner."""
+    rule_id = _GUARD_LOCKFILE_TIMESTAMP_CONSTRUCTOR
+    findings: list[Violation] = []
+    for path in _python_paths(provider, _SRC_PREFIX):
+        if path == _LOCKFILE_OWNER:
+            continue
+        facts, failures = _facts_for(provider, path, rule_id)
+        findings.extend(failures)
+        if failures or facts.tree_index is None:
+            continue
+        findings.extend(
+            violation(
+                rule_id,
+                path,
+                "Lockfile timestamp writes and fallback policy must route through deps/lockfile.py",
+                line=node.lineno,
+            )
+            for node in facts.tree_index.nodes
+            if _constructs_lockfile_timestamp(node)
+        )
+    return tuple(findings)
+
+
+def _owns_reproducible_fallback(node: ast.AST) -> bool:
+    """Return whether a node reimplements the reproducible timestamp fallback."""
+    if isinstance(node, ast.Constant):
+        return node.value == "1970-01-01T00:00:00+00:00"
+    if isinstance(node, ast.Call) and node.args:
+        first_arg = node.args[0]
+        return (
+            isinstance(first_arg, ast.Constant)
+            and first_arg.value == "SOURCE_DATE_EPOCH"
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"get", "getenv"}
+        )
+    if isinstance(node, ast.Subscript):
+        return isinstance(node.slice, ast.Constant) and node.slice.value == "SOURCE_DATE_EPOCH"
+    return False
+
+
+def check_lockfile_timestamp_fallback(provider: FactsProvider) -> tuple[Violation, ...]:
+    """Reproducible timestamp fallback policy must stay inside its owner."""
+    rule_id = _GUARD_LOCKFILE_TIMESTAMP_FALLBACK
+    findings: list[Violation] = []
+    for path in _python_paths(provider, _SRC_PREFIX):
+        if path == _LOCKFILE_OWNER:
+            continue
+        facts, failures = _facts_for(provider, path, rule_id)
+        findings.extend(failures)
+        if failures or facts.tree_index is None:
+            continue
+        findings.extend(
+            violation(
+                rule_id,
+                path,
+                "Lockfile timestamp writes and fallback policy must route through deps/lockfile.py",
+                line=node.lineno,
+            )
+            for node in facts.tree_index.nodes
+            if _owns_reproducible_fallback(node)
+        )
+    return tuple(findings)
 
 
 _TAXONOMY_PLUGIN = "tests/quality/taxonomy_inventory_plugin.py"
@@ -194,7 +455,7 @@ _RESOLVE_PHASE = "src/apm_cli/install/phases/resolve.py"
 
 
 def check_dependency_identity(provider: FactsProvider) -> tuple[Violation, ...]:
-    """Identity may casefold only in identity.py; materialization preserves casing."""
+    """Guard dependency identity, materialization, and embedded-subpath ownership."""
     rule_id = _GUARD_DEPENDENCY_IDENTITY
     identity, identity_fail = _facts_for(provider, _IDENTITY_OWNER, rule_id)
     materialization, mat_fail = _facts_for(provider, _MATERIALIZATION_OWNER, rule_id)
@@ -244,6 +505,42 @@ def check_dependency_identity(provider: FactsProvider) -> tuple[Violation, ...]:
                 rule_id,
                 _IDENTITY_OWNER,
                 "Package identity casing must route through is_github_hostname",
+            )
+        )
+    embedded_subpath_body = _awk_body(
+        reference,
+        re.compile(r"^    def _check_no_embedded_subpath\("),
+        re.compile(r"^    def "),
+    )
+    embedded_subpath_message = (
+        "Embedded git URL subpath validation must use DependencyReference and host_providers"
+    )
+    if not _body_has(embedded_subpath_body, "classify_host_provider(") or not _body_has(
+        embedded_subpath_body, 'provider.kind == "gitlab"'
+    ):
+        findings.append(
+            _summary(
+                rule_id,
+                _REFERENCE_OWNER,
+                embedded_subpath_message,
+            )
+        )
+    primitive_dirs = re.compile(r"_APM_PRIMITIVE_DIRS")
+    for path in _python_paths(provider, _SRC_PREFIX):
+        if path == _REFERENCE_OWNER:
+            continue
+        facts, path_failures = _facts_for(provider, path, rule_id)
+        findings.extend(path_failures)
+        if path_failures:
+            continue
+        findings.extend(
+            _line_findings(
+                facts,
+                path,
+                rule_id,
+                primitive_dirs,
+                embedded_subpath_message,
+                respect_exempt=True,
             )
         )
     return tuple(findings)
@@ -464,10 +761,143 @@ def check_apply_to_placement(provider: FactsProvider) -> tuple[Violation, ...]:
 
 
 _FRONTMATTER_OWNER = "src/apm_cli/utils/yaml_io.py"
+_INSTRUCTION_INTEGRATOR = "src/apm_cli/integration/instruction_integrator.py"
+_CONTENT_SCANNER = "src/apm_cli/security/content_scanner.py"
+_INSTALL_SERVICES = "src/apm_cli/install/services.py"
+_REVISION_PINS = "src/apm_cli/deps/revision_pins.py"
+_FRONTMATTER_METHODS = frozenset({"load", "loads", "parse"})
+
+
+def _frontmatter_aliases(nodes: Sequence[ast.AST]) -> tuple[set[str], dict[str, str]]:
+    """Return module aliases and imported parser-function aliases."""
+    modules: set[str] = set()
+    functions: dict[str, str] = {}
+    for node in nodes:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "frontmatter":
+                    modules.add(alias.asname or alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.module == "frontmatter":
+            for alias in node.names:
+                if alias.name in _FRONTMATTER_METHODS:
+                    functions[alias.asname or alias.name] = alias.name
+    return modules, functions
+
+
+def _frontmatter_call_name(
+    node: ast.Call,
+    modules: set[str],
+    functions: dict[str, str],
+) -> str | None:
+    """Return the frontmatter parser entry point called by *node*."""
+    if (
+        isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id in modules
+        and node.func.attr in _FRONTMATTER_METHODS
+    ):
+        return node.func.attr
+    if isinstance(node.func, ast.Name):
+        return functions.get(node.func.id)
+    return None
+
+
+def _is_bounded_detect(node: ast.Call) -> bool:
+    return (
+        isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "_BOUNDED_FRONTMATTER_HANDLER"
+        and node.func.attr == "detect"
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id == "text"
+    )
+
+
+def _is_bounded_loads(node: ast.Call, modules: set[str], functions: dict[str, str]) -> bool:
+    if _frontmatter_call_name(node, modules, functions) != "loads":
+        return False
+    handler = next((item.value for item in node.keywords if item.arg == "handler"), None)
+    return (
+        len(node.args) == 1
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id == "text"
+        and isinstance(handler, ast.Name)
+        and handler.id == "_BOUNDED_FRONTMATTER_HANDLER"
+    )
+
+
+def _manual_frontmatter_detector(node: ast.Call) -> bool:
+    if (
+        isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "re"
+        and node.func.attr in {"compile", "match"}
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+        and node.args[0].value.startswith("^---")
+    ):
+        return True
+    return (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr in {"startswith", "split"}
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+        and node.args[0].value.startswith("---")
+    )
+
+
+def _self_method_call(node: ast.Call, method: str) -> bool:
+    return (
+        isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "self"
+        and node.func.attr == method
+    )
+
+
+def _inside_matching_if(tree, node: ast.AST, predicate) -> bool:
+    """Return whether *node* is nested in an if whose test matches."""
+    parent = tree.parent(node)
+    while parent is not None:
+        if isinstance(parent, ast.If) and predicate(parent.test):
+            return True
+        parent = tree.parent(parent)
+    return False
+
+
+def _is_no_targets_test(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.UnaryOp)
+        and isinstance(node.op, ast.Not)
+        and isinstance(node.operand, ast.Name)
+        and node.operand.id == "targets"
+    )
+
+
+def _is_native_plugin_test(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "admits_native_plugin"
+    )
+
+
+def _prepared_identity_content(node: ast.AST) -> bool:
+    candidate = node.value if isinstance(node, ast.Attribute) and node.attr == "content" else node
+    return (
+        isinstance(candidate, ast.Subscript)
+        and isinstance(candidate.value, ast.Name)
+        and candidate.value.id == "prepared_instructions"
+        and isinstance(candidate.slice, ast.Name)
+        and candidate.slice.id == "source_file"
+    )
 
 
 def check_frontmatter_yaml(provider: FactsProvider) -> tuple[Violation, ...]:
-    """Frontmatter BOM decoding must route through utils/yaml_io.py."""
+    """Frontmatter detection, BOM decoding, and parsing must use yaml_io.py."""
     rule_id = _GUARD_FRONTMATTER
     owner, owner_fail = _facts_for(provider, _FRONTMATTER_OWNER, rule_id)
     if owner_fail:
@@ -493,6 +923,303 @@ def check_frontmatter_yaml(provider: FactsProvider) -> tuple[Violation, ...]:
                 "Frontmatter BOM decoding must route through utils/yaml_io.py",
             )
         )
+    scanner, scanner_fail = _facts_for(provider, _CONTENT_SCANNER, rule_id)
+    findings.extend(scanner_fail)
+    if not scanner_fail and (
+        not _present(scanner, "content = _combine_surrogate_pairs(content)")
+        or not _present(scanner, "0xD800,")
+        or not _present(scanner, "0xDFFF,")
+    ):
+        findings.append(
+            _summary(
+                rule_id,
+                _CONTENT_SCANNER,
+                "decoded frontmatter scanning must normalize and reject UTF-16 surrogates",
+            )
+        )
+    services, services_fail = _facts_for(provider, _INSTALL_SERVICES, rule_id)
+    findings.extend(services_fail)
+    if not services_fail and services.tree_index is not None:
+        service_tree = services.tree_index
+        integration = service_tree.function("integrate_package_primitives")
+        service_scope = service_tree.own_scope(integration) if integration is not None else ()
+        preflight_calls = [
+            node
+            for node in service_scope
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "preflight_instructions_for_targets"
+        ]
+        reconcile_calls = [
+            node
+            for node in service_scope
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "_reconcile_excluded_targets"
+        ]
+        no_target_calls = [
+            node
+            for node in reconcile_calls
+            if _inside_matching_if(service_tree, node, _is_no_targets_test)
+        ]
+        native_calls = [
+            node
+            for node in reconcile_calls
+            if _inside_matching_if(service_tree, node, _is_native_plugin_test)
+        ]
+        post_preflight_calls = [
+            node
+            for node in reconcile_calls
+            if node not in no_target_calls and node not in native_calls
+        ]
+        if (
+            len(preflight_calls) != 1
+            or len(no_target_calls) != 1
+            or len(native_calls) != 1
+            or len(post_preflight_calls) != 1
+            or post_preflight_calls[0].lineno <= preflight_calls[0].lineno
+        ):
+            findings.append(
+                _summary(
+                    rule_id,
+                    _INSTALL_SERVICES,
+                    "instruction preflight must precede non-empty target reconciliation",
+                )
+            )
+
+    tree = owner.tree_index
+    loads_function = tree.function("loads_frontmatter") if tree is not None else None
+    load_function = tree.function("load_frontmatter") if tree is not None else None
+    if tree is None or loads_function is None or load_function is None:
+        findings.append(
+            _summary(
+                rule_id,
+                _FRONTMATTER_OWNER,
+                "Frontmatter parsing must expose load_frontmatter and loads_frontmatter",
+            )
+        )
+    else:
+        modules, functions = _frontmatter_aliases(tree.nodes)
+        loads_scope = tree.own_scope(loads_function)
+        parser_calls = [
+            node
+            for node in loads_scope
+            if isinstance(node, ast.Call)
+            and _frontmatter_call_name(node, modules, functions) is not None
+        ]
+        detect_calls = [
+            node for node in loads_scope if isinstance(node, ast.Call) and _is_bounded_detect(node)
+        ]
+        bounded_calls = [
+            node for node in parser_calls if _is_bounded_loads(node, modules, functions)
+        ]
+        load_delegates = [
+            node
+            for node in tree.own_scope(load_function)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "loads_frontmatter"
+        ]
+        if len(detect_calls) != 1 or len(parser_calls) != 1 or len(bounded_calls) != 1:
+            findings.append(
+                _summary(
+                    rule_id,
+                    _FRONTMATTER_OWNER,
+                    "loads_frontmatter must gate exactly one bounded frontmatter.loads call",
+                )
+            )
+        if len(load_delegates) != 1:
+            findings.append(
+                _summary(
+                    rule_id,
+                    _FRONTMATTER_OWNER,
+                    "load_frontmatter must delegate parsed text to loads_frontmatter",
+                )
+            )
+
+    for path in _python_paths(provider, _SRC_PREFIX):
+        facts, facts_fail = _facts_for(provider, path, rule_id)
+        findings.extend(facts_fail)
+        if facts_fail or facts.tree_index is None:
+            continue
+        modules, functions = _frontmatter_aliases(facts.tree_index.nodes)
+        for node in facts.tree_index.nodes:
+            if not isinstance(node, ast.Call):
+                continue
+            parser_name = _frontmatter_call_name(node, modules, functions)
+            if path != _FRONTMATTER_OWNER and parser_name in _FRONTMATTER_METHODS:
+                findings.append(
+                    violation(
+                        rule_id,
+                        path,
+                        "direct frontmatter parsing must route through utils/yaml_io.py",
+                        line=node.lineno,
+                        column=node.col_offset + 1,
+                    )
+                )
+            if path == _INSTRUCTION_INTEGRATOR and _manual_frontmatter_detector(node):
+                findings.append(
+                    violation(
+                        rule_id,
+                        path,
+                        "instruction frontmatter detection must route through loads_frontmatter",
+                        line=node.lineno,
+                        column=node.col_offset + 1,
+                    )
+                )
+        if path == _INSTRUCTION_INTEGRATOR:
+            integrate_function = facts.tree_index.function(
+                "InstructionIntegrator.integrate_instructions_for_target"
+            )
+            integrate_scope = (
+                facts.tree_index.own_scope(integrate_function)
+                if integrate_function is not None
+                else ()
+            )
+            prepare_calls = [
+                node
+                for node in integrate_scope
+                if isinstance(node, ast.Call) and _self_method_call(node, "_prepare_instruction")
+            ]
+            identity_renders = [
+                node
+                for node in integrate_scope
+                if isinstance(node, ast.Call) and _self_method_call(node, "_render_instruction")
+            ]
+            adoption_calls = [
+                node
+                for node in integrate_scope
+                if isinstance(node, ast.Call) and _self_method_call(node, "_check_adopt_or_skip")
+            ]
+            expected_content = (
+                next(
+                    (
+                        item.value
+                        for item in adoption_calls[0].keywords
+                        if item.arg == "expected_content"
+                    ),
+                    None,
+                )
+                if len(adoption_calls) == 1
+                else None
+            )
+            prepared_value = (
+                next(
+                    (item.value for item in identity_renders[0].keywords if item.arg == "prepared"),
+                    None,
+                )
+                if len(identity_renders) == 1
+                else None
+            )
+            if (
+                len(prepare_calls) != 1
+                or len(identity_renders) != 1
+                or not _prepared_identity_content(prepared_value)
+                or not isinstance(expected_content, ast.Name)
+                or expected_content.id != "new_content"
+            ):
+                findings.append(
+                    _summary(
+                        rule_id,
+                        path,
+                        "identity instructions must materialize the prepared canonical parse",
+                    )
+                )
+            prepare_function = facts.tree_index.function(
+                "InstructionIntegrator._prepare_instruction"
+            )
+            prepare_scope = (
+                facts.tree_index.own_scope(prepare_function) if prepare_function is not None else ()
+            )
+            security_calls = [
+                node
+                for node in prepare_scope
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "SecurityGate"
+                and node.func.attr == "scan_text"
+            ]
+            json_calls = [
+                node
+                for node in prepare_scope
+                if isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "json"
+                and node.func.attr == "dumps"
+            ]
+            force_value = (
+                next(
+                    (item.value for item in security_calls[0].keywords if item.arg == "force"),
+                    None,
+                )
+                if len(security_calls) == 1
+                else None
+            )
+            ensure_ascii = (
+                next(
+                    (item.value for item in json_calls[0].keywords if item.arg == "ensure_ascii"),
+                    None,
+                )
+                if len(json_calls) == 1
+                else None
+            )
+            block_checks = [
+                node
+                for node in prepare_scope
+                if isinstance(node, ast.If)
+                and isinstance(node.test, ast.Attribute)
+                and isinstance(node.test.value, ast.Name)
+                and node.test.value.id == "verdict"
+                and node.test.attr == "should_block"
+            ]
+            if (
+                len(security_calls) != 1
+                or not isinstance(force_value, ast.Name)
+                or force_value.id != "force"
+                or len(json_calls) != 1
+                or not isinstance(ensure_ascii, ast.Constant)
+                or ensure_ascii.value is not False
+                or len(block_checks) != 1
+            ):
+                findings.append(
+                    _summary(
+                        rule_id,
+                        path,
+                        "decoded frontmatter metadata must cross SecurityGate with force policy",
+                    )
+                )
+    return tuple(findings)
+
+
+def check_project_yaml_write_delegation(provider: FactsProvider) -> tuple[Violation, ...]:
+    """Project YAML writers must delegate to the canonical text-write owner."""
+    rule_id = _GUARD_PROJECT_YAML_WRITES
+    contracts = (
+        (_FRONTMATTER_OWNER, "dump_yaml_roundtrip", "write_text_lf"),
+        (_FRONTMATTER_OWNER, "write_yaml_text_atomic", "atomic_write_text"),
+        (_REVISION_PINS, "apply_revision_pin_updates", "write_yaml_text_atomic"),
+    )
+    findings: list[Violation] = []
+    for path, function_name, delegate in contracts:
+        facts, failures = _facts_for(provider, path, rule_id)
+        findings.extend(failures)
+        if failures or facts.tree_index is None:
+            continue
+        function = facts.tree_index.function(function_name)
+        if function is None:
+            findings.append(_summary(rule_id, path, f"missing project YAML writer {function_name}"))
+            continue
+        calls = _named_calls(facts.tree_index.own_scope(function), delegate)
+        if len(calls) != 1:
+            findings.append(
+                _summary(
+                    rule_id,
+                    path,
+                    f"{function_name} must call {delegate} exactly once",
+                )
+            )
     return tuple(findings)
 
 
@@ -578,7 +1305,7 @@ RULES: tuple[Rule, ...] = (
     ),
     _owner_rule(
         _GUARD_DEPENDENCY_IDENTITY,
-        "Dependency comparison identity casefolds only in identity.py; materialization preserves casing.",
+        "Dependency identity, materialization, and embedded git URL subpaths have canonical owners.",
         check_dependency_identity,
     ),
     _owner_rule(
@@ -593,8 +1320,33 @@ RULES: tuple[Rule, ...] = (
     ),
     _owner_rule(
         _GUARD_FRONTMATTER,
-        "Frontmatter BOM decoding and bounded YAML parsing stay owned by utils/yaml_io.py.",
+        "Frontmatter delimiter detection, BOM decoding, and bounded YAML parsing stay owned by utils/yaml_io.py.",
         check_frontmatter_yaml,
+    ),
+    _owner_rule(
+        _GUARD_PROJECT_YAML_WRITES,
+        "Project YAML writes route through the canonical deterministic text writers.",
+        check_project_yaml_write_delegation,
+    ),
+    _owner_rule(
+        _GUARD_LOCKFILE_READ,
+        "Read-only lockfile path resolution stays owned by deps/lockfile.py.",
+        check_lockfile_read_resolution,
+    ),
+    _owner_rule(
+        _GUARD_LOCKFILE_TIMESTAMP,
+        "Lockfile timestamp emission stays owned by deps/lockfile.py.",
+        check_lockfile_timestamp_authority,
+    ),
+    _owner_rule(
+        _GUARD_LOCKFILE_TIMESTAMP_CONSTRUCTOR,
+        "Lockfile timestamp construction stays owned by deps/lockfile.py.",
+        check_lockfile_timestamp_constructor,
+    ),
+    _owner_rule(
+        _GUARD_LOCKFILE_TIMESTAMP_FALLBACK,
+        "Reproducible timestamp fallback stays owned by deps/lockfile.py.",
+        check_lockfile_timestamp_fallback,
     ),
     _owner_rule(
         _GUARD_GENERATION_FOOTER,

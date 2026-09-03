@@ -473,7 +473,8 @@ dependencies:
     # Self-defined remote with harness-specific extra keys
     # Unknown keys (e.g. oauth) are passthrough: preserved and written into
     # the generated config for EVERY installed harness. Keys that collide with
-    # a modeled field (command/url/headers/env/...) are rejected with a warning.
+    # a modeled or adapter-owned field
+    # (command/url/headers/env/enabled/environment/http_headers/id/...) are rejected.
     - name: slack
       registry: false
       transport: http
@@ -567,7 +568,15 @@ Claude Code uses `.lsp.json` or `~/.claude.json`, and GitHub Copilot CLI
 uses `.github/lsp.json` or `~/.copilot/lsp-config.json`. Copilot CLI
 uses `fileExtensions` on disk; manifests continue to use
 `extensionToLanguage`. Plugin `.lsp.json` files may use either a flat
-server map or a `{ "lspServers": { ... } }` envelope.
+server map or a `{ "lspServers": { ... } }` envelope. For Copilot-dialect
+plugin input, APM accepts `fileExtensions` as an alias for
+`extensionToLanguage` and `warmupTimeoutMs` as an alias for
+`startupTimeout`; a non-null canonical value wins when both are supplied,
+while a null canonical value falls back to its alias. APM ignores the
+unsupported Copilot `cwd` field and warns that the consumer runtime chooses
+the working directory. Copilot output uses `fileExtensions` and
+`warmupTimeoutMs`; manifests and lockfiles retain `extensionToLanguage` and
+`startupTimeout`.
 
 ## Version pinning
 

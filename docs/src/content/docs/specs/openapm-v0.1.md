@@ -136,7 +136,7 @@ between the companion corpus and the implementation.
 
 ### 1.3 Document conventions
 
-- OpenAPM v0.1 carries **119 normative statements** indexed in
+- OpenAPM v0.1 carries **121 normative statements** indexed in
   [Appendix C](#appendix-c-index-of-normative-statements).
 - All on-disk files defined by this specification are **YAML 1.2**
   parsed under the safe subset defined in
@@ -218,8 +218,9 @@ type"), the definition section is cross-linked.
 
 | Term | Definition |
 |---|---|
-| **Manifest** | The `apm.yml` file at the root of a package. Defined in [Section 4](#4-manifest-format-apmyml). |
-| **Lockfile** | The `apm.lock.yaml` file at the root of a project. Defined in [Section 5](#5-lockfile-format-apmlockyaml). |
+| **Manifest** | The `apm.yml` file for one package or installation scope. Defined in [Section 4](#4-manifest-format-apmyml). |
+| **Lockfile** | The `apm.lock.yaml` file recording one installation scope's resolved state. Defined in [Section 5](#5-lockfile-format-apmlockyaml). |
+| **Installation scope** | The isolated manifest, lockfile, and target-configuration boundary for an install. A project scope is rooted at the consumer project. A user scope is independent of any project root and uses an implementation-defined user location disclosed by the consumer's conformance statement. |
 | **Policy** | An `apm-policy.yml` file evaluated by a Governance implementation. Defined in [Section 6](#6-policy-format-apm-policyyml). |
 | **Package** | A unit identified by a manifest (`apm.yml`) or by a recognised package layout (see [Section 8.1](#81-primitive-types)). |
 | **Primitive** | A typed unit of agent configuration (instruction, prompt, agent, skill, command, hook, or mcp server). Defined in [Section 8.1](#81-primitive-types). |
@@ -250,8 +251,9 @@ type"), the definition section is cross-linked.
 
 ### 4.1 Document structure and required fields
 
-The manifest is a single YAML 1.2 document located at the project root,
-filename `apm.yml`.
+The project-scope manifest is a single YAML 1.2 document located at the
+project root, filename `apm.yml`. A user-scope manifest, when supported,
+uses the user location declared under [req-tg-014](#req-tg-014).
 
 <a id="req-mf-001"></a>
 **[req-mf-001]** A conforming **producer** implementation MUST emit a
@@ -798,10 +800,12 @@ This section's normative statements are:
 
 ### 5.1 Top-level structure
 
-The lockfile is a single YAML 1.2 document at the project root,
-filename `apm.lock.yaml`. It records the pinned resolved state of
-every dependency the consumer has resolved from the manifest, plus
-the set of files the consumer itself contributes (the self-entry).
+The project-scope lockfile is a single YAML 1.2 document at the project
+root, filename `apm.lock.yaml`. A user-scope lockfile, when supported,
+uses the user location declared under [req-tg-014](#req-tg-014). A
+lockfile records the pinned resolved state of every dependency the
+consumer has resolved from the manifest, plus the set of files the
+consumer itself contributes (the self-entry).
 
 <a id="req-lk-001"></a>
 **[req-lk-001]** A conforming **consumer** implementation MUST emit a
@@ -819,7 +823,6 @@ Example (informative, minimal):
 
 ```yaml
 lockfile_version: "1"
-generated_at: "2026-05-10T20:14:00+00:00"
 apm_version: "0.6.4"
 dependencies:
   - repo_url: github.com/octocat/example
@@ -866,8 +869,8 @@ unknown fields on round-trip. Field availability is **monotonic** in
 | `local_path`              | Original path for local deps.                                                   |
 | `content_hash`            | Hash envelope (`sha256:<hex>`) of a local package's source tree.                |
 | `is_dev`                  | True when declared under `devDependencies`.                                     |
-| `constraint`              | git-semver: the original semver range from the manifest (verbatim).             |
-| `resolved_tag`            | git-semver: the literal tag the range resolved to.                              |
+| `constraint`              | git-semver discriminator: the original semver range from the manifest (verbatim). |
+| `resolved_tag`            | git-semver selected tag, or advisory tag provenance for a full-SHA git-literal update under [req-rs-017](#req-rs-017). |
 | `resolved_at`             | git-semver: ISO 8601 UTC timestamp; advisory (see [Section 7.3](#73-git-semver-resolution)). |
 | `name`                    | Self-asserted display/inventory name; non-identity (see [req-lk-019](#req-lk-019)). |
 | `attestations`            | Reserved for v0.2 (publisher provenance).                                       |
@@ -1141,16 +1144,17 @@ against.
 <a id="req-lk-005"></a>
 **[req-lk-005]** A conforming **consumer** implementation MUST treat
 two lockfiles as semantically equivalent if they differ only in the
-values of `generated_at` and `apm_version`. A no-op install
-operation MUST NOT rewrite a lockfile whose only changed fields
-would be these two. Consumers operating in privacy-sensitive
-deployments MAY omit `generated_at` and `apm_version` entirely;
-their absence MUST NOT affect content-equivalence comparison.
-Consumers SHOULD expose a `--no-provenance` (or equivalent) flag
-that suppresses these fields on write. Consumers SHOULD NOT include
-`generated_at` or `apm_version` in lockfiles persisted by
-deployments that have declared privacy sensitivity. When a
-consumer writes a lockfile, the `dependencies` list MUST be
+presence or values of `generated_at` and `apm_version`. A no-op
+install operation MUST NOT rewrite a lockfile whose only changed
+fields would be these two. `generated_at` is optional, advisory
+metadata. Consumers MUST omit `generated_at` from newly created
+lockfiles unless explicit user or deployment configuration requests
+it. When an existing lockfile omits `generated_at`, a consumer MUST
+NOT reintroduce it solely as metadata during a later write unless
+that configuration opts in. Consumers operating in privacy-sensitive
+deployments SHOULD omit both provenance fields to avoid leaking tool
+version or build-time information. When a consumer writes a
+lockfile, the `dependencies` list MUST be
 ordered ascending lexicographically by the tuple (`repo_url`,
 `virtual_path`); entries without `virtual_path` sort as if
 `virtual_path` were the empty string. Two lockfiles differing
@@ -1206,6 +1210,10 @@ When the resolver picks a git tag from a semver range (see
 [Section 7.3](#73-git-semver-resolution)), it records three
 additional fields on the resolved entry. These fields are valid in
 both `lockfile_version: "1"` and `"2"` (see [req-lk-002](#req-lk-002)).
+The presence of `constraint` identifies the git-semver shape. A
+git-literal entry updated under [req-rs-017](#req-rs-017) has no
+`constraint`; its optional `resolved_tag` is advisory provenance and
+does not change replay or trust semantics.
 
 <a id="req-lk-008"></a>
 **[req-lk-008]** A conforming **consumer** implementation MUST
@@ -1983,14 +1991,15 @@ re-resolution.
 **[req-rs-015]** A conforming **consumer** implementation performing a
 non-update install (that is, not an `apm update` and not an explicit
 `--refresh`/re-resolution invocation) MUST replay a lockfile entry
-that records a `resolved_commit` without a corresponding `resolved_tag`
-(that is, git-literal and untagged-branch entries per
-[req-rs-003](#req-rs-003)) by reusing that recorded commit as the
+that records a `resolved_commit` for a git-literal or untagged-branch
+entry per [req-rs-003](#req-rs-003) by reusing that recorded commit as the
 resolution result WITHOUT issuing a network ref-resolution -- no
 commits-API query, no `git ls-remote`, and no clone for ref discovery
 (illustrative, not exhaustive) -- for that entry, provided drift
 detection against the manifest reference does not require
-re-resolution. Object fetch to materialise content at the
+re-resolution. An advisory `resolved_tag` recorded under
+[req-rs-017](#req-rs-017) does not change this requirement's
+applicability. Object fetch to materialise content at the
 already-resolved commit is not constrained by this requirement. When
 the manifest reference for the entry has changed so that the recorded
 pin no longer matches (drift -- defined for entries scoped by this
@@ -2066,13 +2075,15 @@ delta from the same inputs.
 <a id="req-rs-011"></a>
 **[req-rs-011]** A conforming **consumer** implementation that
 exposes an `apm update` (or equivalent) command MUST, when invoked
-without a package argument, re-resolve every direct dependency
-against its **current** manifest constraint (holding the manifest
-unchanged), MUST rewrite the lockfile pins to the new highest
-matching version for each direct dep, MUST re-resolve all
-transitive dependencies as a side-effect, and MUST honour the
-active Governance policy's `require_pinned_constraint` rule
-([req-pl-007](#req-pl-007)).
+without a package argument, re-resolve every direct dependency.
+Dependencies other than full-SHA git-literal entries MUST resolve
+against their **current** manifest constraint while leaving that
+constraint unchanged, and the consumer MUST rewrite their lockfile
+pins to the new highest matching version. A full-SHA git-literal entry
+follows [req-rs-017](#req-rs-017) when the consumer offers that update
+extension. The consumer MUST re-resolve all transitive dependencies as
+a side-effect and MUST honour the active Governance policy's
+`require_pinned_constraint` rule ([req-pl-007](#req-pl-007)).
 
 <a id="req-rs-012"></a>
 **[req-rs-012]** A conforming **consumer** implementation that
@@ -2080,7 +2091,64 @@ exposes `apm update <name>` MUST scope re-resolution to the named
 package and its subtree only, MUST hold every other resolved entry
 at its prior pin, and MUST refuse to operate on a frozen install
 (see [req-lk-006](#req-lk-006)) without an explicit override
-flag.
+flag. When the named package is a direct full-SHA git-literal entry
+and the consumer offers the [req-rs-017](#req-rs-017) extension, that
+entry follows req-rs-017; the consumer MUST NOT rewrite a transitive
+package manifest.
+
+<a id="req-rs-017"></a>
+**[req-rs-017]** A conforming **consumer** implementation that offers
+an update extension for a git-literal dependency pinned to a full
+hexadecimal commit ID MUST form one candidate set from annotated tags
+whose peeled object has been verified as a commit and whose parsed
+semantic version has an empty pre-release identifier under
+[Section 7.3.1](#731-semver-dialect-normative). A `0.x.y` version with
+an empty pre-release identifier remains eligible. The consumer MUST NOT
+select a branch or lightweight tag.
+
+A candidate tag name MUST use one of `v{version}`,
+`{name}--v{version}`, `{name}-v{version}`, or the bare `{version}`.
+For a repository dependency, `name` is the final repository path
+component after removing at most one trailing `.git`; for a selected
+virtual subdirectory, it is the final non-empty virtual-path component.
+The consumer MUST select the candidate with the highest version under
+Section 7.3.1 precedence. When candidates have equal precedence, it
+MUST apply the bytewise ASCII full-tag-string tie break in
+[req-rs-014](#req-rs-014), independently of remote record order. A
+winning candidate whose peeled commit equals the current pin is a
+no-op.
+
+When the authoritative upstream contains no eligible tag, the consumer
+MUST retain the current commit ID, emit a default-visible diagnostic,
+and continue resolving other dependencies in the requested update
+scope. A transport failure, an invalid or all-zero object ID, an invalid
+tag refname, a duplicate tag ref record, or a peeled tag record without
+its base record MUST fail the update before any manifest or lockfile
+write. An otherwise eligible annotated tag that peels to a tree, blob,
+or other non-commit object is also a fatal outcome, not an ignored
+candidate. These failures MUST NOT be converted into the retained-pin
+outcome.
+
+For a successful replacement, the consumer MUST rewrite only the
+direct root-manifest entry's `ref` to the selected peeled commit. The
+matching lockfile entry MUST record that same commit in `resolved_ref`
+and `resolved_commit`, and MUST record the selected tag in
+`resolved_tag` as advisory provenance. The tag does not change the
+entry's git-literal reference kind and does not become a trust anchor.
+A later non-update install MUST replay the full commit without remote
+tag enumeration under [req-rs-015](#req-rs-015). A retained-pin outcome
+MUST leave the direct manifest entry and its resolved lock values
+unchanged.
+
+A no-argument update applies this rule to every direct full-SHA
+git-literal entry. A package-scoped update applies it only to the named
+direct entry; ordinary subtree resolution continues, but transitive
+package manifests MUST NOT be rewritten. The consumer MUST finish
+candidate validation for every scoped direct entry before writing
+either the manifest or lockfile. A retained-pin outcome is entry-local
+and does not stop unrelated scoped updates. Any fatal outcome named
+above aborts the requested update scope and leaves both files
+unchanged.
 
 Range-widening update modes (for example `apm update --aggressive`,
 which would mutate the manifest's range upper bounds) are
@@ -2149,7 +2217,6 @@ resolves to the lockfile:
 
 ```yaml
 lockfile_version: "2"
-generated_at: "2026-05-10T20:14:00+00:00"
 apm_version: "0.7.0"
 dependencies:
   - repo_url: github.com/contoso/security-baseline
@@ -2183,7 +2250,8 @@ This section's normative statements are:
   [req-rs-009](#req-rs-009), [req-rs-010](#req-rs-010),
   [req-rs-011](#req-rs-011), [req-rs-012](#req-rs-012),
   [req-rs-013](#req-rs-013), [req-rs-014](#req-rs-014),
-  [req-rs-015](#req-rs-015), [req-rs-016](#req-rs-016).
+  [req-rs-015](#req-rs-015), [req-rs-016](#req-rs-016),
+  [req-rs-017](#req-rs-017).
 - Producer: [req-pr-004](#req-pr-004).
 - Producer (SHOULD): [req-pr-005](#req-pr-005).
 
@@ -2643,6 +2711,37 @@ suffix.
 > the materialized dependency directory; it does not copy package content into
 > the host's private plugin state.
 
+#### 8.5.8 User-scoped MCP target selection
+
+<a id="req-tg-014"></a>
+**[req-tg-014]** A conforming **consumer** implementation that supports a user
+installation scope MUST disclose in its conformance statement the user-scope
+manifest and lockfile locations and the versioned target-capability declaration
+it uses to determine user-scope MCP support. The consumer MUST treat a target
+without that declared capability as unsupported.
+
+When the consumer installs an MCP server into a user scope, it MUST resolve the
+effective target selection from the first applicable source in this order: an
+explicit target selection; a non-empty user-scope manifest restriction that
+does not contain the literal no-restriction sentinel `all`; a configured user
+default; then user-scope runtime discovery. Once a source selects one or more
+targets, the consumer MUST NOT consult a lower-precedence source. Project-scoped
+target-detection signals outside the user scope MUST NOT constrain the discovery
+step. A manifest `all` token is treated as no restriction and therefore does
+not suppress lower-precedence user-scope defaults or discovery.
+
+Before creating or modifying the user-scope manifest, lockfile, or target
+configuration for the attempted MCP entry, the consumer MUST partition the
+selected targets by the declared user-scope MCP capability. If no supported
+target remains, it MUST emit an actionable diagnostic and MUST NOT make a
+persistent mutation or fall back to discovery. For a mixed set, the supported
+subset MUST become the effective target set; the consumer MUST diagnose every
+unsupported target, MUST NOT write its target configuration, and MUST NOT fall
+back to discovery. If it persists an explicit mixed selection as a user-scope
+manifest restriction, it MUST serialize only the supported subset using target
+identifiers whose replay selects the same runtimes; it MUST NOT persist an
+unsupported member or remap one to a different supported runtime.
+
 ### 8.6 Per-target primitive support (informational)
 
 The matrix of which primitive types each target supports is
@@ -2660,7 +2759,8 @@ without a spec revision. The current matrix is in the companion
   [req-tg-008](#req-tg-008), [req-tg-009](#req-tg-009),
   [req-tg-010](#req-tg-010), [req-tg-011](#req-tg-011),
   [req-tg-012](#req-tg-012), [req-tg-013](#req-tg-013),
-  [req-pr-006](#req-pr-006), [req-pr-007](#req-pr-007).
+  [req-tg-014](#req-tg-014), [req-pr-006](#req-pr-006),
+  [req-pr-007](#req-pr-007).
 
 ---
 
@@ -3259,6 +3359,7 @@ conformance statement identifying:
 [req-rs-011](#req-rs-011), [req-rs-012](#req-rs-012),
 [req-rs-013](#req-rs-013), [req-rs-014](#req-rs-014),
 [req-rs-015](#req-rs-015), [req-rs-016](#req-rs-016),
+[req-rs-017](#req-rs-017),
 [req-pr-001](#req-pr-001), [req-pr-002](#req-pr-002),
 [req-pr-003](#req-pr-003), [req-tg-001](#req-tg-001),
 [req-pr-006](#req-pr-006), [req-pr-007](#req-pr-007),
@@ -3268,6 +3369,7 @@ conformance statement identifying:
 [req-tg-008](#req-tg-008), [req-tg-009](#req-tg-009),
 [req-tg-010](#req-tg-010), [req-tg-011](#req-tg-011),
 [req-tg-012](#req-tg-012), [req-tg-013](#req-tg-013),
+[req-tg-014](#req-tg-014),
 [req-sc-001](#req-sc-001),
 [req-sc-002](#req-sc-002), [req-sc-003](#req-sc-003),
 [req-sc-004](#req-sc-004), [req-sc-005](#req-sc-005),
@@ -3338,7 +3440,6 @@ A Consumer reading the manifest above produces the lockfile:
 
 ```yaml
 lockfile_version: "2"
-generated_at: "2026-05-10T20:14:00+00:00"
 apm_version: "0.7.0"
 dependencies:
   - repo_url: github.com/contoso/common-prompts
@@ -3697,6 +3798,7 @@ renumbering of conformance classes.
 | [req-rs-014](#req-rs-014)                | MUST    | 7.3.1   | consumer    |
 | [req-rs-015](#req-rs-015)                | MUST    | 7.5     | consumer    |
 | [req-rs-016](#req-rs-016)                | MUST    | 7.2     | consumer    |
+| [req-rs-017](#req-rs-017)                | MUST    | 7.7     | consumer    |
 | [req-pr-001](#req-pr-001)                | MUST    | 8.2     | consumer    |
 | [req-pr-002](#req-pr-002)                | MUST    | 8.3     | consumer    |
 | [req-pr-003](#req-pr-003)                | MUST    | 8.3     | consumer    |
@@ -3717,6 +3819,7 @@ renumbering of conformance classes.
 | [req-tg-011](#req-tg-011)                | MUST    | 8.5.5   | consumer    |
 | [req-tg-012](#req-tg-012)                | MUST    | 8.5.6   | consumer    |
 | [req-tg-013](#req-tg-013)                | MUST    | 8.5.7   | consumer    |
+| [req-tg-014](#req-tg-014)                | MUST    | 8.5.8   | consumer    |
 | [req-sc-001](#req-sc-001)                | MUST    | 10.4    | consumer    |
 | [req-sc-002](#req-sc-002)                | MUST    | 10.9    | consumer    |
 | [req-sc-003](#req-sc-003)                | MUST    | 10.3    | consumer    |
@@ -3736,7 +3839,7 @@ renumbering of conformance classes.
 | [req-cf-001](#req-cf-001)                | MUST    | 12.5    | consumer    |
 | [req-cf-002](#req-cf-002)                | MUST    | 12.3    | consumer    |
 
-**Total normative statements: 119** (114 MUST, 5 SHOULD).
+**Total normative statements: 121** (116 MUST, 5 SHOULD).
 
 ---
 
@@ -3782,6 +3885,9 @@ renumbering of conformance classes.
 | 0.1.34  | 2026-08-25 | Spec-citation fold for root-declared Plugin component staging containment (closes #2556). Added [req-pr-007] (Section 8.1, consumer MUST): a consumer canonicalizes the non-symlink component-source root and prunes the current operation's materialization subtree before traversal. Section 8.7, Section 11.3.2, Appendix C, and conformance coverage updated. Statement count: 117 -> 118 (113 MUST, 5 SHOULD). |
 | 0.1.35  | 2026-08-27 | Stale-spec (Mode C) amendment recording a machine-verifiable native Agent Plugins lifecycle. Added [req-tg-013] (Section 8.5.7, consumer MUST): schema, effective-target, integrity, security, and executable admission drives one aggregate direct-plus-transitive registration per scope without locating, invoking, or version-checking a host binary during lifecycle operations; packages remain materialized in place and opaque to legacy projection; direct dependencies win plugin-name collisions over transitive dependencies, same-precedence collisions fail, and recorded ownership does not silently repoint to a transitive claimant; a consumer-owned marketplace identifier and activation suffix are reserved only with the exact generated directory-marketplace entry; the ownership record is primary evidence, while missing-record recovery may re-adopt only that exact entry and reconcile the reserved namespace; foreign collisions and invalid JSON fail closed; unrelated JSON values are preserved semantically though stable serialization may reformat them; and catalog, ownership-record, and settings writes form one rollback unit. Revised [req-tg-011] to clarify that acquisition, materialization, and lock recording may precede target exclusion, which creates no target registration or primitive projection and does not block ordinary dependencies in the same batch. Compatibility is qualified at release or build time by the pinned real-host lifecycle suite; runtime availability is the operator's responsibility. Added the native plugin namespace and ownership-recovery threat to Section 10. Section 8.7, Section 11.3.2 Consumer enumeration, Appendix C, and conformance coverage updated. Statement count: 118 -> 119 (114 MUST, 5 SHOULD). |
 | 0.1.36  | 2026-08-29 | Editorial and defensive alignment for [req-tg-011] and [req-tg-013]. Named the [req-tg-008] result as the effective target intersection; scoped aggregate registration and plugin-name claimant selection to dependencies that passed admission; required target contraction to retire consumer-owned native registration; required advisory uninstall, prune, and restore reconciliation to omit ambiguous or changed-owner plugin entries without blocking cleanup; restored exact removal boundaries; defined directory-marketplace entries; and added reserved namespace disclosure to Section 11.2. Added conformance coverage for direct-owner promotion, advisory collision cleanup, and transitive owner-repoint refusal. Statement count remains 119 (114 MUST, 5 SHOULD). |
+| 0.1.37  | 2026-09-01 | Spec-citation fold for safe full-SHA revision-pin updates (closes #2511 Mode-B silent-extension gate). Added [req-rs-017] (Section 7.7, consumer MUST): a consumer extension may replace a full commit pin only with the peeled commit of the highest eligible non-prerelease annotated tag, including 0.x; no eligible tag retains the current commit and allows unrelated updates to continue; malformed, ambiguous, or failed remote tag resolution stops before manifest or lockfile writes. Revised [req-rs-011], [req-rs-012], and [req-rs-015] for bounded manifest rewrite, scoped operation, advisory tag provenance, and network-free replay. Section 5.2, Section 5.6, Section 7.11, Section 11.3.2, Appendix C, and conformance coverage updated. Statement count: 119 -> 120 (115 MUST, 5 SHOULD). |
+| 0.1.38  | 2026-09-01 | Defensive amendment of [req-lk-005] (no new normative statement; count remains 120 (115 MUST, 5 SHOULD)): `generated_at` is optional advisory metadata, new lockfiles omit it by default, and later writes preserve an existing omission unless explicitly configured otherwise. |
+| 0.1.39  | 2026-09-01 | Spec-citation fold for user-scoped direct MCP target selection (closes #2548 Mode-B silent-extension gate). Added [req-tg-014] (Section 8.5.8, consumer MUST): explicit selection, the user-scope manifest, configured user default, and user-scope runtime discovery form one precedence chain; project-only signals cannot constrain final discovery; and a selected set with no user-capable runtime fails before user manifest, lockfile, or target-config mutation. Section 8.7, Section 11.3.2, and Appendix C updated. Statement count: 120 -> 121 (116 MUST, 5 SHOULD). |
 
 Errata (none at publication).
 

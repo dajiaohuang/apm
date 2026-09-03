@@ -19,7 +19,6 @@ import re
 import shutil
 import warnings
 from collections.abc import MutableMapping
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -239,6 +238,28 @@ class MCPIntegrator:
     # ------------------------------------------------------------------
     # Dependency resolution
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def prevalidate_registry_dependencies(
+        mcp_deps: list,
+        *,
+        registry_url: str | None,
+        verbose: bool,
+        logger,
+        registry_source: str | None = None,
+    ) -> builtins.dict[str, builtins.dict]:
+        """Validate direct-install registry identities before any write."""
+        from apm_cli.integration.mcp_integrator_install import (
+            prevalidate_registry_dependencies,
+        )
+
+        return prevalidate_registry_dependencies(
+            mcp_deps,
+            registry_url=registry_url,
+            verbose=verbose,
+            logger=logger,
+            registry_source=registry_source,
+        )
 
     @staticmethod
     def collect_transitive(
@@ -859,8 +880,7 @@ class MCPIntegrator:
             ):
                 _log.debug("MCP lockfile unchanged -- skipping write")
                 return
-            lockfile.generated_at = datetime.now(timezone.utc).isoformat()
-            lockfile.save(lock_path)
+            lockfile.save(lock_path, existing_lockfile=existing_lockfile)
         except Exception as exc:
             _log.debug(
                 "MCP lockfile persistence failed at %s",
@@ -1256,7 +1276,7 @@ class MCPIntegrator:
         return out
 
     @staticmethod
-    def install(
+    def install(  # noqa: PLR0913
         mcp_deps: list,
         runtime: str = None,  # noqa: RUF013
         exclude: str = None,  # noqa: RUF013
@@ -1271,6 +1291,7 @@ class MCPIntegrator:
         diagnostics=None,
         scope=None,
         managed_target_servers: builtins.dict | None = None,
+        prevalidated_registry_servers: builtins.dict[str, builtins.dict] | None = None,
         fail_on_write_error: bool = False,
     ) -> int:
         """Install MCP dependencies.
@@ -1316,5 +1337,6 @@ class MCPIntegrator:
             diagnostics=diagnostics,
             scope=scope,
             managed_target_servers=managed_target_servers,
+            prevalidated_registry_servers=prevalidated_registry_servers,
             fail_on_write_error=fail_on_write_error,
         )

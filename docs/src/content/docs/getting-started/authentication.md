@@ -54,6 +54,24 @@ Results are cached per-process. Validation, persistent Git cache population, and
 |----------|--------|-------|
 | 1 | `git credential fill` | Configure credentials for that host in git |
 
+### Generic marketplace Git transport
+
+Marketplace Git fetches use `AuthResolver` host classification with a
+transport-specific credential policy. Generic HTTPS may use its native Git credential helper, while
+APM remains noninteractive (`GIT_TERMINAL_PROMPT=0`). Platform token variables,
+`GIT_TOKEN`, and environment-based authorization-header channels are removed
+before that fetch.
+
+| Remote | Credential posture |
+| --- | --- |
+| Generic HTTPS | Native Git credential helpers are available. |
+| Generic HTTP | Git fetches isolate configuration and suppress all credential channels. Hosted `marketplace.json` registration requires HTTPS. |
+| Generic SSH | Token-free, with `BatchMode=yes` and `ConnectTimeout=30`. |
+| GitHub, GitLab, ADO | Continue using the hardened provider-specific environment. |
+
+APM rejects an HTTPS Git URL that Git configuration would rewrite to
+`http://` before any credential helper or provider credential is used.
+
 For Azure DevOps Services, APM resolves `ADO_APM_PAT`, then an Entra ID
 (AAD) bearer token from Azure CLI (`az`). Azure DevOps Server uses
 `ADO_APM_PAT` only. See [Azure DevOps](#azure-devops).
@@ -567,13 +585,13 @@ This reproduces exactly what APM sends to the credential helper. If the returned
 When APM clones over SSH (because the dependency is an SSH URL, the user
 passed `--ssh`, `git config url.<base>.insteadOf` rewrites to SSH, or
 `--allow-protocol-fallback` is in effect), firewalls that silently drop SSH
-packets (port 22) can make `apm install` appear to hang. APM sets
-`GIT_SSH_COMMAND="ssh -o ConnectTimeout=30"` so SSH attempts fail within 30
-seconds.
+packets (port 22) can make `apm install` appear to hang. APM forces
+`BatchMode=yes`, disables askpass and HTTP credential channels, and sets a
+30-second connection timeout so SSH attempts fail without prompting.
 
 If you already set `GIT_SSH_COMMAND` (e.g., for a custom key), APM appends
-`-o ConnectTimeout=30` unless `ConnectTimeout` is already present in your
-value.
+`-o BatchMode=yes` and appends `-o ConnectTimeout=30` unless
+`ConnectTimeout` is already present in your value.
 
 If SSH is unreachable from your network, force HTTPS:
 

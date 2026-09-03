@@ -3,8 +3,8 @@
   "owners": [
     {
       "id": "dependency-identity-materialization",
-      "decision": "Dependency comparison identity vs display-cased materialization path",
-      "owner": "models/dependency/identity.py + materialization.py + DependencyReference",
+      "decision": "Dependency comparison identity vs display-cased materialization path; embedded git URL subpath validation",
+      "owner": "models/dependency/identity.py + materialization.py + DependencyReference (_check_no_embedded_subpath consumes core/host_providers.py)",
       "selectors": [
         "src/apm_cli/models/dependency/identity.py",
         "src/apm_cli/models/dependency/materialization.py",
@@ -31,10 +31,29 @@
     },
     {
       "id": "frontmatter-bom-bounded-yaml",
-      "decision": "Frontmatter BOM decoding and bounded YAML parsing",
-      "owner": "utils/yaml_io.py (load_frontmatter, _BoundedYAMLHandler)",
+      "decision": "Frontmatter delimiter detection, BOM decoding, and bounded YAML parsing",
+      "owner": "utils/yaml_io.py (load_frontmatter, loads_frontmatter, _BoundedYAMLHandler)",
       "selectors": ["src/apm_cli/utils/yaml_io.py"],
       "guards": ["contracts-tooling-frontmatter-yaml"]
+    },
+    {
+      "id": "deterministic-atomic-text-writes",
+      "decision": "Deterministic UTF-8 text writes and atomic replacement",
+      "owner": "utils/atomic_io.py (write_text_lf, atomic_write_text)",
+      "selectors": ["src/apm_cli/utils/atomic_io.py"],
+      "guards": ["contracts-tooling-project-yaml-write-delegation"]
+    },
+    {
+      "id": "read-only-lockfile-path",
+      "decision": "Lockfile read path, timestamp emission, and reproducible fallback",
+      "owner": "deps/lockfile.py (resolve_lockfile_path_for_read, LockFile.write, resolve_reproducible_timestamp)",
+      "selectors": ["src/apm_cli/deps/lockfile.py"],
+      "guards": [
+        "contracts-tooling-lockfile-read",
+        "contracts-tooling-lockfile-timestamp",
+        "contracts-tooling-lockfile-timestamp-constructor",
+        "contracts-tooling-lockfile-timestamp-fallback"
+      ]
     },
     {
       "id": "generated-content-footer-wording",
