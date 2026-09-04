@@ -6,10 +6,10 @@ runner already proves the registry and the rule catalog agree *by name* and that
 every guard executes exactly once per run.  Names prove nothing about teeth: a
 rule whose body was gutted still registers its guard ID and still runs.
 
-This file supplies the missing half of that contract.  For each of the 58
-registered owner guards it pins one minimal, meaningful source mutation -- a
-surgical edit that kills a load-bearing sub-condition of the owning decision --
-and asserts the one rule that owns that guard reports a real `Violation`.
+This file supplies the missing half of that contract.  For each registered owner
+guard it pins one minimal, meaningful source mutation -- a surgical edit that
+kills a load-bearing sub-condition of the owning decision -- and asserts the one
+rule that owns that guard reports a real `Violation`.
 Coverage is a set equality against the live registry, so a new owner guard that
 lands without a mutation case fails here instead of shipping a toothless rule.
 
@@ -182,20 +182,20 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="An Agent Plugin consumer reimplements the reproducible timestamp fallback.",
     ),
     MutationCase(
-        guard_id="contracts-tooling-root-context-write-eligibility",
-        rule_id="contracts-tooling-root-context-write-eligibility",
-        path="src/apm_cli/compilation/agents_compiler.py",
-        old="and self._hand_authored_root_context_blocks_write(output_file)",
-        new="and False",
-        intent="Single-file compilation bypasses the root overwrite eligibility owner.",
-    ),
-    MutationCase(
         guard_id="contracts-tooling-project-yaml-write-delegation",
         rule_id="contracts-tooling-project-yaml-write-delegation",
         path="src/apm_cli/utils/yaml_io.py",
         old="    atomic_write_text(\n",
         new="    write_text_lf(\n",
         intent="The atomic project YAML writer bypasses the canonical atomic writer.",
+    ),
+    MutationCase(
+        guard_id="contracts-tooling-root-context-write-eligibility",
+        rule_id="contracts-tooling-root-context-write-eligibility",
+        path="src/apm_cli/compilation/agents_compiler.py",
+        old="def _hand_authored_root_context_blocks_write(",
+        new="def _hand_authored_root_context_blocks_write_disabled(",
+        intent="Root context writes lose the canonical hand-authored ownership gate.",
     ),
     MutationCase(
         guard_id="hooks-integrations-copilot-cli-mcp-paths",
@@ -286,6 +286,22 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="BaseIntegrator drops a mandatory file-level deploy/sync/cleanup method.",
     ),
     MutationCase(
+        guard_id="install-deployment-bundle-native-layout",
+        rule_id="install-deployment-bundle-native-layout",
+        path="src/apm_cli/install/local_bundle_paths.py",
+        old="if mapping is not None:",
+        new='if target.name == "copilot" and mapping is not None:',
+        intent="Local bundle routing branches on target names instead of target primitives.",
+    ),
+    MutationCase(
+        guard_id="install-deployment-executable-trust-context",
+        rule_id="install-deployment-executable-trust-context",
+        path="src/apm_cli/security/executables.py",
+        old="def exec_trust_context_for_project(",
+        new="def exec_trust_context_for_project_disabled(",
+        intent="Executable trust loses its canonical project-context resolver.",
+    ),
+    MutationCase(
         guard_id="install-deployment-frozen-mutation-eligibility",
         rule_id="install-deployment-frozen-mutation-eligibility",
         path="src/apm_cli/install/service.py",
@@ -302,12 +318,44 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Direct MCP target resolution stops consuming the command's scope decision.",
     ),
     MutationCase(
+        guard_id="install-deployment-lifecycle-serialization",
+        rule_id="install-deployment-lifecycle-serialization",
+        path="src/apm_cli/commands/config.py",
+        old="@serialized_lifecycle\ndef set(",
+        new="def set(",
+        intent="Config mutation stops routing through the canonical lifecycle lock.",
+    ),
+    MutationCase(
+        guard_id="install-deployment-lsp-lifecycle",
+        rule_id="install-deployment-lsp-lifecycle",
+        path="src/apm_cli/install/lsp/integration.py",
+        old="def reconcile_lsp_after_uninstall(",
+        new="def reconcile_lsp_after_uninstall_disabled(",
+        intent="LSP reconciliation loses its canonical lifecycle entry point.",
+    ),
+    MutationCase(
+        guard_id="install-deployment-lsp-target-contract",
+        rule_id="install-deployment-lsp-target-contract",
+        path="src/apm_cli/integration/lsp_integrator.py",
+        old="return BaseIntegrator.resolve_deploy_path(relative_path, project_root)",
+        new="return spec.path(project_root, user_scope=False)",
+        intent="Claude LSP plugin writes bypass the canonical deployment-path gate.",
+    ),
+    MutationCase(
         guard_id="install-deployment-mcp-ownership-migration",
         rule_id="install-deployment-mcp-ownership-migration",
         path="src/apm_cli/install/mcp/ownership.py",
         old="def resolve_mcp_target_servers(",
         new="def resolve_mcp_target_servers_disabled(",
         intent="Legacy MCP target ownership adoption loses its canonical resolver.",
+    ),
+    MutationCase(
+        guard_id="install-deployment-mcp-registry-resolution",
+        rule_id="install-deployment-mcp-registry-resolution",
+        path="src/apm_cli/registry/client.py",
+        old="def resolve_mcp_registry_url(",
+        new="def resolve_mcp_registry_url_disabled(",
+        intent="The registry client loses the canonical MCP registry precedence resolver.",
     ),
     MutationCase(
         guard_id="install-deployment-outcome",
@@ -326,12 +374,20 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Effective package-target authorization loses its single resolver.",
     ),
     MutationCase(
+        guard_id="install-deployment-primitive-classification",
+        rule_id="install-deployment-primitive-classification",
+        path="src/apm_cli/install/primitive_classification.py",
+        old="def classify_plugin_manifest(",
+        new="def classify_plugin_manifest_disabled(",
+        intent="Primitive classification loses its canonical plugin-manifest classifier.",
+    ),
+    MutationCase(
         guard_id="install-deployment-prospective-dry-run-plan",
         rule_id="install-deployment-prospective-dry-run-plan",
-        path="src/apm_cli/commands/install.py",
-        old="mcp_deps=list(prospective_plan.selected_mcp_dependencies) or None",
-        new="mcp_deps=mcp_deps if should_install_mcp else None",
-        intent="Dry-run policy checks bypass the plan-owned MCP selection.",
+        path="src/apm_cli/install/presentation/dry_run.py",
+        old="for dep in plan.selected_lsp_dependencies:",
+        new="for dep in plan.lsp_dependencies:",
+        intent="Dry-run LSP rendering bypasses plan-owned service selection.",
     ),
     MutationCase(
         guard_id="install-deployment-provenance-state",
@@ -454,6 +510,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="from_apm_yml stops routing interpreted construction through from_mapping.",
     ),
     MutationCase(
+        guard_id="marketplace-integrations-package-format-precedence",
+        rule_id="marketplace-integrations-package-format-precedence",
+        path="src/apm_cli/bundle/local_bundle.py",
+        old="package_type, _ = detect_package_type(",
+        new="package_type, _ = bypass_package_type_precedence(",
+        intent="Agent Plugin ingress bypasses the package-format precedence owner.",
+    ),
+    MutationCase(
         guard_id="marketplace-integrations-package-projection",
         rule_id="marketplace-integrations-package-projection",
         path="src/apm_cli/agent_plugins/projection.py",
@@ -571,6 +635,44 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="A manifest consumer reads raw targets instead of canonical_targets.",
     ),
     MutationCase(
+        guard_id="transport-platform-ado-validation-bearer-fallback",
+        rule_id="transport-platform-host-credential-resolution",
+        path="src/apm_cli/install/validation.py",
+        old="        fallback = auth_resolver.execute_with_bearer_fallback(",
+        new="        fallback = _bypass_ado_bearer_fallback(",
+        intent="Install validation bypasses canonical ADO PAT-to-bearer fallback.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-ado-validation-caller-config",
+        rule_id="transport-platform-host-credential-resolution",
+        path="src/apm_cli/deps/clone_engine.py",
+        old=(
+            "                    attempt.effective_url or attempt_url,\n"
+            "                    base_env=host.git_env,"
+        ),
+        new=(
+            "                    attempt.effective_url or attempt_url,\n"
+            "                    base_env=None,"
+        ),
+        intent="Tokenless ADO clone attempts discard caller-owned Git configuration.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-ado-validation-clone-bearer-fallback",
+        rule_id="transport-platform-host-credential-resolution",
+        path="src/apm_cli/deps/clone_engine.py",
+        old="                    fallback = host.auth_resolver.execute_with_bearer_fallback(",
+        new="                    fallback = _execute_ado_bearer_fallback_locally(",
+        intent="Clone execution bypasses AuthResolver's PAT-to-bearer owner.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-ado-validation-helper-suppression",
+        rule_id="transport-platform-host-credential-resolution",
+        path="src/apm_cli/core/auth.py",
+        old='        if host_kind == "ado" and not token:',
+        new='        if host_kind == "generic" and not token:',
+        intent="Tokenless ADO environments can reactivate native Git helpers.",
+    ),
+    MutationCase(
         guard_id="transport-platform-artifactory-full-commit-sha",
         rule_id="transport-platform-artifactory-full-commit-sha",
         path="src/apm_cli/utils/github_host.py",
@@ -601,12 +703,203 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="Shared clone cache keys on a raw URL instead of the normalized identity.",
     ),
     MutationCase(
+        guard_id="transport-platform-git-child-environment",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/utils/git_env.py",
+        old='        "GIT_CONFIG",',
+        new='        "GIT_CONFIG_UNSAFE",',
+        intent="Git children retain the repository-local config override.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-clone-hooks-disabled",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/utils/git_env.py",
+        old='    return "-c", "core.hooksPath=/dev/null"',
+        new='    return "-c", "core.hooksPath=.githooks"',
+        intent="Dependency clones reactivate repository-provided checkout hooks.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-clone-templates-disabled",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/utils/git_env.py",
+        old='    return ("--template=",)',
+        new='    return ("--template=.git-templates",)',
+        intent="Dependency clones load repository template configuration.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-diagnostic-redaction",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/deps/git_file_transport.py",
+        old="            safe_stderr = redact_git_diagnostic(result.stderr.strip())",
+        new="            safe_stderr = result.stderr.strip()",
+        intent="Sparse Git failures expose Authorization header values.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-diagnostic-redaction-debug",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/deps/github_downloader.py",
+        old='        print(f"[DEBUG] {redact_git_diagnostic(message)}", file=sys.stderr)',
+        new='        print(f"[DEBUG] {message}", file=sys.stderr)',
+        intent="Downloader debug output renders raw Git diagnostics.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-diagnostic-sanitizer-ownership",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/deps/github_downloader_validation.py",
+        old='_SHA_RE = re.compile(r"[0-9a-fA-F]{7,40}")',
+        new=(
+            '_SHA_RE = re.compile(r"[0-9a-fA-F]{7,40}")\n\n'
+            "def _sanitize_git_error(value: str) -> str:\n"
+            "    return value"
+        ),
+        intent="A downloader helper introduces a competing Git diagnostic sanitizer.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-diagnostic-sanitizer-ownership-downloader",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/deps/github_downloader.py",
+        old="        return redact_git_diagnostic(error_message)",
+        new="        return error_message",
+        intent="The downloader compatibility sanitizer stops delegating to the owner.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-diagnostic-token-shapes",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/utils/git_env.py",
+        old="github_pat_",
+        new="github_bad_",
+        intent="Fine-grained GitHub PATs stop being redacted from Git diagnostics.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-diagnostic-token-shapes-jwt",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/utils/git_env.py",
+        old="eyJ[A-Za-z0-9_-]",
+        new="bad[A-Za-z0-9_-]",
+        intent="Bare AAD bearer JWTs stop being redacted from Git diagnostics.",
+    ),
+    MutationCase(
         guard_id="transport-platform-git-semver-preflight",
         rule_id="transport-platform-git-semver-preflight",
         path="src/apm_cli/install/helpers/ref_reuse.py",
         old="if not is_git_semver_resolution_eligible(dep_ref):",
         new="if False:  # bypassed eligibility check",
         intent="Ref reuse drops the semver preflight eligibility gate.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-semver-remote-auth",
+        rule_id="transport-platform-git-semver-preflight",
+        path="src/apm_cli/install/helpers/ref_reuse.py",
+        old="        git_env_factory=resolver_git_env_factory,",
+        new="        git_env=None,",
+        intent="Semver resolution stops creating remote Git environments lazily on cache miss.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-single-remote-fetch",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/cache/git_cache.py",
+        old="            fallback_fetch_args += [url, *_FALLBACK_REFSPECS]",
+        new='            fallback_fetch_args += ["--all"]',
+        intent="A failed SHA fetch fans out to every configured remote.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-url-credentials-out-of-argv",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/deps/clone_engine.py",
+        old='                    token="",\n                    auth_scheme="basic",',
+        new='                    token=token,\n                    auth_scheme="basic",',
+        intent="Authenticated GitHub clone URLs regain process-visible credentials.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-url-header-specificity",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/utils/git_env.py",
+        old='                "--get-urlmatch",',
+        new='                "--get-regexp",',
+        intent="Git URL-scoped header precedence falls back to config order.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-url-header-specificity-fence",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/utils/git_env.py",
+        old="    if not managed and not reset_headers and not helper_reset:",
+        new="    if not managed and not reset_headers:",
+        intent="Credential-helper-only fences fail to remove ambient helpers.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-url-header-specificity-fence-malformed-values",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/utils/git_env.py",
+        old='    if any(character in value for character in ("\\r", "\\n", "\\0")):',
+        new="    if False:",
+        intent="Ambient extraHeader values can retain header-injection delimiters.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-url-header-specificity-fence-managed-auth",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/utils/git_env.py",
+        old='    env[_MANAGED_GIT_AUTH_INTENT_ENV] = "1"',
+        new='    env[_MANAGED_GIT_AUTH_INTENT_ENV] = "0"',
+        intent="Managed authentication loses its explicit rewrite-safety intent.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-url-rewrite-enforcement",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/utils/git_env.py",
+        old="    effective_url, snapshot = _validated_git_url_rewrite_policy(",
+        new=(
+            "    effective_url, snapshot = "
+            "(lambda *_args, **_kwargs: (None, _GitConfigSnapshot((), (), ())))("
+        ),
+        intent="The canonical network environment bypasses URL rewrite validation.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-url-rewrite-once",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/deps/clone_engine.py",
+        old="                url = attempt.requested_url",
+        new="                url = attempt.effective_url",
+        intent="Clone execution applies an already-resolved URL rewrite a second time.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-url-rewrite-recovery",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/marketplace/client.py",
+        old='            reason = f"{reason}; {exc.recovery_hint}"',
+        new="            reason = reason",
+        intent="Marketplace wrapping drops the safe Git rewrite inspection command.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-url-rewrite-routing",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/deps/bare_cache.py",
+        old="                    remote_env = git_network_env(url, env, git_dir=target)",
+        new="                    remote_env = sanitize_for_git(env)",
+        intent="Shared bare clones bypass the canonical network Git environment owner.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-url-rewrite-routing-validation",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/install/validation.py",
+        old="    transport_plan = ado_downloader._transport_selector.select(",
+        new="    transport_plan = _legacy_validation_transport_plan(",
+        intent="Positional validation bypasses the canonical TransportSelector.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-git-url-rewrite-safety",
+        rule_id="transport-platform-git-child-environment",
+        path="src/apm_cli/deps/git_auth_env.py",
+        old='class GitAuthEnvBuilder:\n    """Build the various git env dicts the downloader needs."""',
+        new=(
+            "class GitAuthEnvBuilder:\n"
+            '    """Build the various git env dicts the downloader needs."""\n\n'
+            "    @staticmethod\n"
+            "    def has_https_to_http_url_rewrite(\n"
+            "        remote_url: str, env: dict[str, str]\n"
+            "    ) -> bool:\n"
+            "        return False"
+        ),
+        intent="GitAuthEnvBuilder regains a parallel URL rewrite safety policy.",
     ),
     MutationCase(
         guard_id="transport-platform-github-throttle",
@@ -631,6 +924,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
             "def _debug(message: str) -> None:"
         ),
         intent="A downloader reads an ADO token off the host instead of via AuthResolver.",
+    ),
+    MutationCase(
+        guard_id="transport-platform-host-reference-coordinates",
+        rule_id="transport-platform-host-reference-coordinates",
+        path="src/apm_cli/models/dependency/host_virtual.py",
+        old="def parse_host_qualified_reference(",
+        new="def parse_host_qualified_reference_disabled(",
+        intent="Host-qualified reference parsing loses its canonical coordinate parser.",
     ),
     MutationCase(
         guard_id="transport-platform-network-host-parsing",

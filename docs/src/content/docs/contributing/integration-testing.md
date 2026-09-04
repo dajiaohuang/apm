@@ -38,7 +38,7 @@ APM uses a tiered approach to integration testing:
 - **Purpose**: Promote a stable, hermetic slice of Consume/Produce/Govern lifecycle contracts onto the PR-time critical path, so regressions in install, lock, deployment ownership, compile, pack, prune, uninstall, audit, and repair fail the PR.
 - **Scope**: the family contains a static authority guard plus content-hash, policy, hook, virtual-package, audit, auth, and installed-console rows. Real subprocess cases use the uv-installed `apm` command and local Git. This is not frozen PyInstaller coverage.
 - **Prerequisites**: the pytest step sets `APM_E2E_TESTS=1` so subprocess rows execute. `APM_RUN_INTEGRATION_TESTS` remains unset, the socket guard denies network sockets, and the job binds no credentials.
-- **Duration**: the required expression must remain inside its hard 5-minute job timeout; hosted duration is authoritative.
+- **Duration**: the required expression must remain inside its hard 6-minute job timeout; hosted duration is authoritative.
 - **Trigger**: every pull request and merge queue run (`ci.yml`'s `lifecycle-smoke` job, required via `merge-gate.yml`)
 - **Selection mechanism**: `pytest --strict-markers -m 'lifecycle_smoke and not lifecycle_merge_group' tests/integration` -- declarative, not a file/node-id list. No central count or membership list is maintained.
 - **Full-coverage path**: merge-group workflow `ci-integration.yml`, job `integration-tests-shard`, step `Run integration tests (sharded + parallelized)`, calls `uv run ./scripts/test-integration.sh`; that script runs unfiltered `pytest tests/integration/`, so the complete lifecycle family remains exercised.
@@ -331,16 +331,22 @@ environment end-to-end; for local iteration prefer the direct
 **On PR and merge queue:**
 1. PR-time unit checks and the hermetic Lifecycle Smoke gate run first; merge queue adds Linux smoke, integration, and release-validation gates.
 
-**On version tag releases:**
+**On pushed version tag releases:**
 1. Unit tests + Smoke tests
 2. Build binaries (cross-platform)
 3. **E2E golden scenario tests** (using built binaries). Linux and macOS Apple Silicon retain the full non-live integration corpus; macOS Intel runs the marker-bounded `lifecycle_smoke and not live` subset plus native startup and isolated release validation.
 4. Create GitHub Release
 5. Publish to PyPI 
 
+**Daily scheduled release smoke:**
+- Runs the same promotion validation path once per day.
+- If a build matrix leg fails, downstream Linux/Windows integration and release-validation jobs still run for any platform artifact that was produced.
+- Failing scheduled runs update one `ci/daily-smoke` tracking issue; a later recovered run closes it.
+- This signal is advisory and is not a required PR check.
+
 **Manual workflow dispatch:**
 - Test builds (uploads as workflow artifacts)
-- Allows testing the full build pipeline without creating a release
+- Allows testing the full build pipeline without creating a release, even when dispatched from a tag ref
 - Useful for validating changes before tagging
 
 ### GitHub Actions Authentication
@@ -387,26 +393,26 @@ Promotion integration tests run on:
 ## What the Tests Verify
 
 ### Smoke Tests Verify:
-- ✅ Runtime setup scripts execute successfully
-- ✅ Binaries are downloaded and installed correctly
-- ✅ Binaries respond to basic commands
-- ✅ APM can detect installed runtimes
-- ✅ Configuration files are created properly
-- ✅ Workflow compilation works (without execution)
+- [+] Runtime setup scripts execute successfully
+- [+] Binaries are downloaded and installed correctly
+- [+] Binaries respond to basic commands
+- [+] APM can detect installed runtimes
+- [+] Configuration files are created properly
+- [+] Workflow compilation works (without execution)
 
 ### E2E Tests Verify:
-- ✅ Complete golden scenario from README works
-- ✅ `apm runtime setup copilot` installs and configures GitHub Copilot CLI
-- ✅ `apm runtime setup codex` installs and configures Codex
-- ✅ `apm runtime setup llm` installs and configures LLM
-- ✅ `apm init my-hello-world` creates project correctly
-- ✅ `apm install` handles dependencies
-- ✅ `apm run start --param name="Tester"` executes successfully
-- ✅ Real API calls to GitHub Models work
-- ✅ Parameter substitution works correctly
-- ✅ MCP integration functions (GitHub tools)
-- ✅ Binary artifacts work across platforms
-- ✅ Release pipeline integrity (GitHub Release → PyPI)
+- [+] Complete golden scenario from README works
+- [+] `apm runtime setup copilot` installs and configures GitHub Copilot CLI
+- [+] `apm runtime setup codex` installs and configures Codex
+- [+] `apm runtime setup llm` installs and configures LLM
+- [+] `apm init my-hello-world` creates project correctly
+- [+] `apm install` handles dependencies
+- [+] `apm run start --param name="Tester"` executes successfully
+- [+] Real API calls to GitHub Models work
+- [+] Parameter substitution works correctly
+- [+] MCP integration functions (GitHub tools)
+- [+] Binary artifacts work across platforms
+- [+] Release pipeline integrity (GitHub Release -> PyPI)
 
 ### Lifecycle Smoke Verifies:
 - Install content-hash roundtrip (Consume contract)

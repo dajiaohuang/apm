@@ -11,8 +11,13 @@ how to install it:
 | `SKILL.md` (alone, or with apm.yml = HYBRID) | One skill bundle | Copy whole tree to `<target>/skills/<name>/` |
 | `skills/<name>/SKILL.md` | Many skills in one repo | Promote each nested skill to `<target>/skills/<name>/` |
 | `hooks/*.json` only | Harness hook package | Deploy hooks to the target's hooks directory |
-| `plugin.json` (no `$schema`) / `.claude-plugin/` | Claude plugin collection | Dissect via plugin artifact mapping |
-| `plugin.json` with an Agent Plugins `$schema` | Portable Agent Plugin | Acquired and locked as one opaque unit; registered when effective targets include Copilot and admission gates pass. Excluded targets create no native registration or loose primitive projection. APM does not require the runtime during lifecycle operations; loading requires supported Copilot CLI 1.0.81 or newer |
+| `plugin.json` (no `$schema`, or unrecognized `$schema`) / `.claude-plugin/` | Claude plugin collection | Dissect via plugin artifact mapping |
+| `plugin.json` with the recognized Agent Plugins `$schema` | Portable Agent Plugin | Acquired and locked as one opaque unit; registered when effective targets include Copilot and admission gates pass. Excluded targets create no native registration or loose primitive projection. APM does not require the runtime during lifecycle operations; loading requires supported Copilot CLI 1.0.81 or newer |
+
+When plugin signals coexist with an eligible `apm.yml`, the APM layout wins.
+An `apm.yml` is eligible when the root also has `.apm/` or the manifest
+declares APM or MCP dependencies. To intentionally select a plugin layout,
+omit `apm.yml` or keep it metadata-only, without `.apm/` or dependencies.
 
 For Agent Plugins with the same declared name, a direct dependency wins over a
 transitive dependency. APM refuses same-precedence collisions and does not
@@ -111,6 +116,9 @@ debug bridges, and other author-only servers in
 `devDependencies.mcp`. The root package receives both sections in its
 authoring environment; consumers of that package receive only
 `dependencies.mcp`, including when the package is nested transitively.
+Adding either kind of MCP dependency makes the root `apm.yml` eligible, so
+direct installs select the APM package layout over a co-located plugin
+manifest. Keep `apm.yml` metadata-only to preserve plugin selection.
 See [MCP dependency formats](dependencies.md#mcp-dependency-formats).
 
 ## Hook files
@@ -550,6 +558,10 @@ complete deploy list: declare each skill directory or an immediate container.
 An omitted key discovers root `skills/`; an explicit `[]` deploys none. If APM
 reports `plugin.json declares no deployable skills`, add the intended paths or
 remove the key to restore discovery.
+
+APM treats an unrecognized `plugin.json` `$schema` as an identification miss,
+not a rejection. It warns, then classifies by structure. Only the recognized
+Agent Plugins schema selects the portable Agent Plugin route.
 
 #### Shipping `bin/` executables (Claude Code only)
 
