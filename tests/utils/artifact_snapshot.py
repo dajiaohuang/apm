@@ -130,7 +130,7 @@ class ArtifactSnapshotSet:
         for candidate, snapshot in self.snapshots:
             if candidate == root_id:
                 return snapshot
-        known = ", ".join(root_id for root_id, _snapshot in self.snapshots)
+        known = ", ".join(candidate for candidate, _snapshot in self.snapshots)
         raise KeyError(f"Unknown artifact snapshot root {root_id!r}; known roots: {known}")
 
 
@@ -228,6 +228,35 @@ def assert_only_snapshot_paths_changed(
         )
 
 
+def assert_snapshot_changes_within(
+    before: ArtifactSnapshotSet,
+    after: ArtifactSnapshotSet,
+    *,
+    exact_paths: Mapping[str, Collection[str]],
+    tree_prefixes: Mapping[str, Collection[str]],
+) -> None:
+    """Assert changes stay within exact paths or explicitly allowed subtrees."""
+    _require_snapshot_set_pair(before, after)
+    known_roots = {root_id for root_id, _snapshot in before.snapshots}
+    unknown = (set(exact_paths) | set(tree_prefixes)) - known_roots
+    if unknown:
+        raise KeyError(f"Unknown artifact snapshot roots in write set: {sorted(unknown)}")
+    for root_id, snapshot in before.snapshots:
+        difference = snapshot.diff(after.snapshot(root_id))
+        observed = difference.added | difference.removed | difference.changed
+        allowed_exact = set(exact_paths.get(root_id, ()))
+        allowed_trees = set(tree_prefixes.get(root_id, ()))
+        unexpected = {
+            path
+            for path in observed
+            if path not in allowed_exact
+            and not any(_is_path_in_tree(path, prefix) for prefix in allowed_trees)
+        }
+        assert not unexpected, (
+            f"Artifact root {root_id!r} wrote outside its declared write set: {sorted(unexpected)}"
+        )
+
+
 def _require_snapshot(value: object) -> None:
     """Reject authored mappings in place of real filesystem captures."""
     if not isinstance(value, ArtifactSnapshot):
@@ -248,6 +277,10 @@ def _require_snapshot_set_pair(
 
 def _paths_overlap(first: Path, second: Path) -> bool:
     return first == second or first in second.parents or second in first.parents
+
+
+def _is_path_in_tree(path: str, prefix: str) -> bool:
+    return bool(prefix) and (path == prefix or path.startswith(f"{prefix}/"))
 
 
 def _portable_path(path: PurePath) -> str:

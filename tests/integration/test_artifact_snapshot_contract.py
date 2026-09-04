@@ -15,6 +15,7 @@ from tests.utils.artifact_snapshot import (
     assert_paths_absent,
     assert_paths_created,
     assert_paths_present,
+    assert_snapshot_changes_within,
     assert_snapshot_set_unchanged,
     assert_unchanged,
 )
@@ -167,6 +168,21 @@ def test_snapshot_set_observes_every_named_root_and_rejects_overlap(tmp_path: Pa
         changed,
         {"workspace": {"apm_modules", "apm_modules/stray.txt"}},
     )
+    assert_snapshot_changes_within(
+        before,
+        changed,
+        exact_paths={"workspace": {"apm_modules"}},
+        tree_prefixes={"workspace": {"apm_modules"}},
+    )
+    (workspace / "apm_modules-sibling.txt").write_bytes(b"outside")
+    outside = ArtifactSnapshotSet.capture({"workspace": workspace, "user": user_root})
+    with pytest.raises(AssertionError, match="outside its declared write set"):
+        assert_snapshot_changes_within(
+            before,
+            outside,
+            exact_paths={"workspace": {"apm_modules"}},
+            tree_prefixes={"workspace": {"apm_modules"}},
+        )
     with pytest.raises(KeyError, match="Unknown artifact snapshot root"):
         before.snapshot("missing")
     with pytest.raises(KeyError, match="allowlist"):
