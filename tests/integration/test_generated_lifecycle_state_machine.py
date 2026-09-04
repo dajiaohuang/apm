@@ -216,7 +216,7 @@ class _LifecycleReferenceModel(RuleBasedStateMachine):
             environment=self.fixture.environment,
             scenario_id=self._next_id("dry-run"),
         )
-        assert _PACKAGE_NAME in result.stdout + result.stderr, (
+        assert "[i] APM dependencies (1):" in result.stdout.splitlines(), (
             "dry-run must prove dependency resolution reached the fixture"
         )
         assert_snapshot_set_unchanged(before, self._capture())
