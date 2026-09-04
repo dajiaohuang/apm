@@ -242,17 +242,86 @@ def _record_agent_plugin_boundary_failure(
     return deltas
 
 
+def _target_names_for_hint(ctx: InstallContext) -> str:
+    """Return the target argument to use in a recovery command."""
+    names: list[str] = []
+    for target in getattr(ctx, "targets", None) or ():
+        name = getattr(target, "name", target)
+        if isinstance(name, str) and name:
+            names.append(name)
+    return ",".join(sorted(set(names))) or "<target>"
+
+
+def _dependency_base_for_skill_subpath(dep_ref) -> str:
+    """Return the dependency reference before any ref suffix."""
+    if getattr(dep_ref, "is_local", False) and getattr(dep_ref, "local_path", None):
+        display = dep_ref.local_path
+    elif hasattr(dep_ref, "to_display_reference"):
+        display = dep_ref.to_display_reference()
+    elif hasattr(dep_ref, "get_identity"):
+        display = dep_ref.get_identity()
+    else:
+        display = getattr(dep_ref, "repo_url", "")
+    return str(display).split("#", 1)[0].rstrip("/")
+
+
+def _agent_plugin_skill_name_for_hint(
+    source: DependencySource,
+    materialization: Materialization,
+) -> str | None:
+    """Return one skill name that can be installed through the subpath route."""
+    requested = getattr(source.ctx, "skill_subset", None)
+    if requested:
+        for value in requested:
+            skill_name = str(value)
+            if skill_name and skill_name != "*":
+                return skill_name
+
+    package = getattr(materialization.package_info, "package", None)
+    plugin = getattr(package, "agent_plugin", None)
+    components = getattr(plugin, "components", None)
+    for skill in getattr(components, "skills", ()) or ():
+        skill_name = getattr(skill, "directory_name", None) or getattr(skill, "name", None)
+        if skill_name:
+            return str(skill_name)
+    return None
+
+
+def _agent_plugin_target_skip_message(
+    source: DependencySource,
+    materialization: Materialization,
+    error: AgentPluginTargetExcludedError,
+) -> str:
+    """Return the actionable target-exclusion diagnostic for one package."""
+    message = str(error)
+    skill_name = _agent_plugin_skill_name_for_hint(source, materialization)
+    if skill_name is None:
+        return (
+            f"{message} No selected target received this package. "
+            "Select --target copilot or install a target-compatible package."
+        )
+
+    dep_base = _dependency_base_for_skill_subpath(source.dep_ref)
+    target_arg = _target_names_for_hint(source.ctx)
+    command = f"apm install {dep_base}/skills/{skill_name} --target {target_arg}"
+    return (
+        f"{message} No selected target received this package. "
+        "To install this skill as a plain skill bundle, use "
+        f"'{command}'."
+    )
+
+
 def _record_agent_plugin_target_skip(
     source: DependencySource,
     materialization: Materialization,
     error: AgentPluginTargetExcludedError,
 ) -> dict[str, int]:
-    """Record a non-fatal skip for a package this project does not target at copilot.
+    """Record a target skip for a package this project does not target at copilot.
 
     Mirrors the per-dependency ``targets:`` subset already handled in
     ``finalize_native_plugin``: native registration is skipped, ONE warning
-    names the package, and the rest of the batch installs. This is a warning,
-    not an error, so the install still exits 0.
+    names the package, and the rest of the batch can still install. The
+    install outcome owner fails later only when no package deployed.
     """
     ctx = source.ctx
     deltas = materialization.deltas
@@ -261,7 +330,10 @@ def _record_agent_plugin_target_skip(
     deltas["installed"] = 0
     ctx.package_deployed_files[dep_key] = []
     package_key = dep_ref.local_path if (dep_ref.is_local and dep_ref.local_path) else dep_key
-    ctx.diagnostics.warn(str(error), package=package_key)
+    ctx.diagnostics.agent_plugin_target_excluded(
+        _agent_plugin_target_skip_message(source, materialization, error),
+        package=package_key,
+    )
     return deltas
 
 
