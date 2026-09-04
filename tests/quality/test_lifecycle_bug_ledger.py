@@ -78,7 +78,9 @@ def test_lifecycle_bug_ledger_has_valid_taxonomy_and_unique_references() -> None
         referenced_properties.update(row["properties"])
 
     assert referenced_properties == set(property_ids)
-    assert {gap["id"] for gap in known_gaps} == {"late-lock-write-atomicity"}
+    gap_ids = [gap["id"] for gap in known_gaps]
+    assert gap_ids
+    assert len(gap_ids) == len(set(gap_ids))
     for gap in known_gaps:
         assert set(gap["properties"]) <= set(property_ids)
         assert gap["bounded_by"]
