@@ -588,7 +588,7 @@ def test_target_exclusion_hint_names_remote_skill_subpath_form() -> None:
         AgentPluginTargetExcludedError("target excluded"),
     )
 
-    assert "apm install kunchenguid/lavish-axi/skills/lavish --target codex" in message
+    assert "apm install kunchenguid/lavish-axi/skills/lavish#main --target codex" in message
     assert "#main/skills" not in message
 
 

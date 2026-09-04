@@ -118,9 +118,10 @@ def preflight_agent_plugin_materializations(
     """Reject the batch once, before any package can mutate a target.
 
     A native Agent Plugin whose effective targets simply do not select
-    ``copilot`` is not a failure: it is skipped per-package during integration
-    (:func:`_record_agent_plugin_target_skip`), so it must not abort the
-    batch -- ``AgentPluginTargetExcludedError`` carries that distinction.
+    ``copilot`` is not a structural package failure: it is skipped per-package
+    during integration (:func:`_record_agent_plugin_target_skip`), so it must
+    not abort a batch that can still deploy other packages. The final install
+    outcome may still fail a pure no-op run.
     Anything else raised here (missing canonical IR, the imperative bundle
     route) is a real, actionable failure and aborts the whole batch.
     """
@@ -145,11 +146,12 @@ def preflight_agent_plugin_dry_run(
     'no native harness' fallback. Admission never depends on whether a
     Copilot binary exists or which version it reports.
 
-    Target exclusion (``AgentPluginTargetExcludedError``) is never fatal --
-    a real install skips that package with one warning and installs the
-    rest of the batch, so the dry-run preview must not abort the whole
-    preview for the same reason either. Only a genuine structural failure
-    (missing canonical IR, the imperative bundle route) aborts here.
+    Target exclusion (``AgentPluginTargetExcludedError``) is non-fatal during
+    preflight and per-package integration: a real install skips that package
+    with one warning and can still install the rest of the batch. The command
+    outcome owner may still fail a pure no-op install after integration. Only a
+    genuine structural failure (missing canonical IR, the imperative bundle
+    route) aborts here.
     """
     from apm_cli.bundle.local_bundle import route_agent_plugin_package
     from apm_cli.copilot_plugins.capability import native_registration_scope
@@ -252,8 +254,8 @@ def _target_names_for_hint(ctx: InstallContext) -> str:
     return ",".join(sorted(set(names))) or "<target>"
 
 
-def _dependency_base_for_skill_subpath(dep_ref) -> str:
-    """Return the dependency reference before any ref suffix."""
+def _dependency_parts_for_skill_subpath(dep_ref) -> tuple[str, str]:
+    """Return dependency base and ref suffix for a skill-subpath command."""
     if getattr(dep_ref, "is_local", False) and getattr(dep_ref, "local_path", None):
         display = dep_ref.local_path
     elif hasattr(dep_ref, "to_display_reference"):
@@ -262,7 +264,8 @@ def _dependency_base_for_skill_subpath(dep_ref) -> str:
         display = dep_ref.get_identity()
     else:
         display = getattr(dep_ref, "repo_url", "")
-    return str(display).split("#", 1)[0].rstrip("/")
+    base, separator, reference = str(display).partition("#")
+    return base.rstrip("/"), f"{separator}{reference}" if separator else ""
 
 
 def _agent_plugin_skill_name_for_hint(
@@ -301,9 +304,9 @@ def _agent_plugin_target_skip_message(
             "Select --target copilot or install a target-compatible package."
         )
 
-    dep_base = _dependency_base_for_skill_subpath(source.dep_ref)
+    dep_base, ref_suffix = _dependency_parts_for_skill_subpath(source.dep_ref)
     target_arg = _target_names_for_hint(source.ctx)
-    command = f"apm install {dep_base}/skills/{skill_name} --target {target_arg}"
+    command = f"apm install {dep_base}/skills/{skill_name}{ref_suffix} --target {target_arg}"
     return (
         f"{message} No selected target received this package. "
         "To install this skill as a plain skill bundle, use "
