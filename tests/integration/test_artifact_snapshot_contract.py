@@ -8,11 +8,14 @@ import pytest
 from tests.utils import artifact_snapshot as artifact_snapshot_module
 from tests.utils.artifact_snapshot import (
     ArtifactSnapshot,
+    ArtifactSnapshotSet,
     _portable_path,
     assert_only_paths_changed,
+    assert_only_snapshot_paths_changed,
     assert_paths_absent,
     assert_paths_created,
     assert_paths_present,
+    assert_snapshot_set_unchanged,
     assert_unchanged,
 )
 
@@ -129,3 +132,49 @@ def test_assertions_reject_authored_expected_mappings(tmp_path: Path) -> None:
     snapshot_field = "root_existed"
     with pytest.raises(AttributeError):
         setattr(snapshot, snapshot_field, False)
+
+
+def test_snapshot_set_observes_every_named_root_and_rejects_overlap(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    user_root = tmp_path / "user-root"
+    workspace.mkdir()
+    user_root.mkdir()
+    (workspace / "apm.yml").write_bytes(b"name: fixture\n")
+    (user_root / "settings.json").write_bytes(b"{}\n")
+
+    before = ArtifactSnapshotSet.capture(
+        {
+            "workspace": workspace,
+            "user": user_root,
+        }
+    )
+
+    assert before.snapshot("workspace").paths == frozenset({"apm.yml"})
+    assert before.snapshot("user").paths == frozenset({"settings.json"})
+    assert_snapshot_set_unchanged(
+        before,
+        ArtifactSnapshotSet.capture({"workspace": workspace, "user": user_root}),
+    )
+
+    leaked = workspace / "apm_modules/stray.txt"
+    leaked.parent.mkdir()
+    leaked.write_bytes(b"unrecorded")
+    changed = ArtifactSnapshotSet.capture({"workspace": workspace, "user": user_root})
+    with pytest.raises(AssertionError, match="Unexpected artifact changes"):
+        assert_snapshot_set_unchanged(before, changed)
+    assert_only_snapshot_paths_changed(
+        before,
+        changed,
+        {"workspace": {"apm_modules", "apm_modules/stray.txt"}},
+    )
+    with pytest.raises(KeyError, match="Unknown artifact snapshot root"):
+        before.snapshot("missing")
+    with pytest.raises(KeyError, match="allowlist"):
+        assert_only_snapshot_paths_changed(before, changed, {"missing": set()})
+    with pytest.raises(ValueError, match="must not overlap"):
+        ArtifactSnapshotSet.capture(
+            {
+                "workspace": workspace,
+                "nested": workspace / "apm_modules",
+            }
+        )
