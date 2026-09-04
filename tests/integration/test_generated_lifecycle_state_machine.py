@@ -388,7 +388,7 @@ def test_generated_transition_catalog_covers_phase_one_properties() -> None:
         "assert_snapshot_set_unchanged",
     }
     for rule_name, function in rules.items():
-        tree = ast.parse(textwrap.dedent(inspect.getsource(function)))
+        tree = ast.parse(textwrap.dedent(inspect.getsource(inspect.unwrap(function))))
         called_names = {
             node.func.id
             for node in ast.walk(tree)

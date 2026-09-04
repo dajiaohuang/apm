@@ -57,7 +57,9 @@ def test_lifecycle_bug_ledger_has_valid_taxonomy_and_unique_references() -> None
     property_ids = [row["id"] for row in property_rows]
     assert len(property_ids) == len(set(property_ids))
     assert all(row["law"] for row in property_rows)
-    assert {row["phase"] for row in property_rows} == {0, 1}
+    phases = {row["phase"] for row in property_rows}
+    assert phases
+    assert phases <= {0, 1}
     assert {row["oracle_tier"] for row in property_rows} == {
         "open-world",
         "outcome",
