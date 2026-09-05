@@ -17,7 +17,14 @@ from apm_cli.deps.lockfile import LockFile
 from apm_cli.integration.targets import KNOWN_TARGETS, TargetProfile
 from apm_cli.utils.yaml_io import dump_yaml, load_yaml
 from tests.utils.apm_lifecycle_runner import ApmLifecycleRunner, CommandResult
-from tests.utils.artifact_snapshot import ArtifactSnapshot, assert_unchanged
+from tests.utils.artifact_snapshot import (
+    ArtifactSnapshot,
+    ArtifactSnapshotSet,
+    assert_only_snapshot_paths_changed,
+    assert_snapshot_changes_within,
+    assert_snapshot_set_unchanged,
+    assert_unchanged,
+)
 from tests.utils.isolated_apm_environment import IsolatedApmEnvironment
 from tests.utils.lifecycle_state import LifecycleStateRoot, LifecycleStateSnapshot
 from tests.utils.local_git_repository import LocalGitRepositoryFactory
@@ -42,14 +49,37 @@ class _Row:
     primitives: tuple[str, ...]
     targets: tuple[str, ...]
     user_scope: bool
+    catalog_cell: bool = False
     dynamic_refusal: bool = False
     widen_targets: tuple[str, ...] = ()
     narrow_targets: tuple[str, ...] = ()
 
 
-_ROWS = (
-    _Row("copilot-skill-canvas-project", ("skills", "canvas"), ("copilot",), False),
-    _Row("claude-agent-user", ("agents",), ("claude",), True),
+def _catalog_rows() -> tuple[_Row, ...]:
+    """Enumerate every statically available primitive, target, and scope cell."""
+    rows = []
+    for target_name, base_profile in sorted(KNOWN_TARGETS.items()):
+        if base_profile.user_root_resolver is not None:
+            continue
+        for user_scope in (False, True):
+            profile = base_profile.for_scope(user_scope=user_scope)
+            if profile is None:
+                continue
+            scope = "user" if user_scope else "project"
+            rows.extend(
+                _Row(
+                    id=f"{target_name}-{primitive}-{scope}",
+                    primitives=(primitive,),
+                    targets=(target_name,),
+                    user_scope=user_scope,
+                    catalog_cell=True,
+                )
+                for primitive in sorted(profile.primitives)
+            )
+    return tuple(rows)
+
+
+_TRANSITION_ROWS = (
     _Row(
         "copilot-prompt-widen-narrow",
         ("prompts",),
@@ -58,8 +88,6 @@ _ROWS = (
         widen_targets=("copilot", "cursor"),
         narrow_targets=("copilot",),
     ),
-    _Row("gemini-command-user", ("commands",), ("gemini",), True),
-    _Row("cursor-instruction-project", ("instructions",), ("cursor",), False),
     _Row(
         "claude-codex-hook-narrow",
         ("hooks",),
@@ -67,9 +95,9 @@ _ROWS = (
         False,
         narrow_targets=("claude",),
     ),
-    _Row("kiro-hook-user", ("hooks",), ("kiro",), True),
-    _Row("kiro-agent-project", ("agents",), ("kiro",), False),
-    _Row("opencode-skill-user", ("skills",), ("opencode",), True),
+)
+
+_DYNAMIC_REFUSAL_ROWS = (
     _Row(
         "copilot-app-unavailable",
         ("prompts",),
@@ -86,36 +114,40 @@ _ROWS = (
     ),
 )
 
+_ROWS = (*_catalog_rows(), *_TRANSITION_ROWS, *_DYNAMIC_REFUSAL_ROWS)
+_MAX_CATALOG_ROWS = 100
+_KNOWN_SECOND_PASS_GAPS = {
+    ("copilot", "instructions", True): {
+        "user": {
+            ".apm/apm.lock.yaml",
+            ".copilot/copilot-instructions.md",
+        }
+    }
+}
 
-def _assert_sparse_covering_array() -> None:
-    """Make the reviewable rows prove the intended bounded coverage."""
-    covered_primitives = {primitive for row in _ROWS for primitive in row.primitives}
-    assert covered_primitives == {
-        "skills",
-        "agents",
-        "prompts",
-        "commands",
-        "instructions",
-        "hooks",
-        "canvas",
+
+def _assert_covering_array() -> None:
+    """Prove complete valid routing-cell coverage with a bounded row count."""
+    expected = {
+        (target_name, primitive, user_scope)
+        for target_name, base_profile in KNOWN_TARGETS.items()
+        if base_profile.user_root_resolver is None
+        for user_scope in (False, True)
+        for profile in (base_profile.for_scope(user_scope=user_scope),)
+        if profile is not None
+        for primitive in profile.primitives
     }
-    assert {(row.user_scope, row.dynamic_refusal) for row in _ROWS} == {
-        (False, False),
-        (True, False),
-        (True, True),
+    covered = {
+        (row.targets[0], row.primitives[0], row.user_scope) for row in _ROWS if row.catalog_cell
     }
-    assert {target for row in _ROWS for target in row.targets} == {
-        "copilot",
-        "claude",
-        "cursor",
-        "gemini",
-        "kiro",
-        "codex",
-        "opencode",
-        "copilot-app",
-        "copilot-cowork",
+    assert covered == expected
+    assert len(covered) == len(tuple(row for row in _ROWS if row.catalog_cell))
+    assert len(covered) <= _MAX_CATALOG_ROWS
+    assert {row.targets[0] for row in _DYNAMIC_REFUSAL_ROWS} == {
+        name for name, profile in KNOWN_TARGETS.items() if profile.user_root_resolver is not None
     }
-    assert sum(bool(row.widen_targets or row.narrow_targets) for row in _ROWS) == 2
+    assert all(row.dynamic_refusal and row.user_scope for row in _DYNAMIC_REFUSAL_ROWS)
+    assert all(row.widen_targets or row.narrow_targets for row in _TRANSITION_ROWS)
 
 
 def _row_profiles(row: _Row) -> tuple[TargetProfile, ...]:
@@ -320,11 +352,82 @@ def _capture_state(
     )
 
 
+def _capture_artifacts(
+    isolated: IsolatedApmEnvironment,
+    project_root: Path,
+) -> ArtifactSnapshotSet:
+    """Capture complete project and isolated user roots without consulting product state."""
+    return ArtifactSnapshotSet.capture(
+        {
+            "project": project_root,
+            "user": isolated.home,
+        }
+    )
+
+
+def _allowed_write_trees(
+    row: _Row,
+    profiles: tuple[TargetProfile, ...],
+) -> dict[str, frozenset[str]]:
+    """Return reviewed top-level trees that one routing row may own."""
+    configured_roots = {
+        root
+        for profile in profiles
+        for root in (
+            profile.root_dir,
+            *(mapping.deploy_root for mapping in profile.primitives.values()),
+        )
+        if root
+    }
+    target_roots = {
+        parent.as_posix()
+        for root in configured_roots
+        for path in (PurePosixPath(root),)
+        for parent in (path, *path.parents)
+        if parent.as_posix() != "."
+    }
+    project_trees = frozenset({"apm_modules", *target_roots}) if not row.user_scope else frozenset()
+    user_trees = (
+        frozenset({".apm", ".local", *target_roots})
+        if row.user_scope
+        else frozenset({".apm", ".local"})
+    )
+    return {
+        "project": project_trees,
+        "user": user_trees,
+    }
+
+
+def _assert_row_changes_within_owned_trees(
+    row: _Row,
+    profiles: tuple[TargetProfile, ...],
+    before: ArtifactSnapshotSet,
+    after: ArtifactSnapshotSet,
+    *,
+    allow_manifest: bool = False,
+) -> None:
+    """Reject writes outside the row's project, user, and target-owned roots."""
+    project_paths = {"apm.lock.yaml", ".gitignore"}
+    if allow_manifest:
+        project_paths.add("apm.yml")
+    exact_paths = {
+        "project": frozenset() if row.user_scope else frozenset(project_paths),
+        "user": frozenset(),
+    }
+    assert_snapshot_changes_within(
+        before,
+        after,
+        exact_paths=exact_paths,
+        tree_prefixes=_allowed_write_trees(row, profiles),
+    )
+
+
 def _assert_materialized(
     row: _Row,
     *,
     before: LifecycleStateSnapshot,
     after: LifecycleStateSnapshot,
+    profiles: tuple[TargetProfile, ...],
     lock_root: Path,
     deployment_root: Path,
 ) -> None:
@@ -352,9 +455,9 @@ def _assert_materialized(
 
     if "hooks" in row.primitives:
         hook_configs = [
-            deployment_root / KNOWN_TARGETS[target].hooks_config_display
-            for target in row.targets
-            if KNOWN_TARGETS[target].hooks_config_display
+            profile.deploy_path(deployment_root, Path(profile.hooks_config_display).name)
+            for profile in profiles
+            if profile.hooks_config_display
         ]
         if hook_configs:
             assert all(path.is_file() for path in hook_configs)
@@ -448,8 +551,8 @@ def test_primitive_target_covering_array(
     apm_binary_path: Path,
     row: _Row,
 ) -> None:
-    """Drive each sparse pair through install, convergence, transition, and cleanup."""
-    _assert_sparse_covering_array()
+    """Drive each valid routing cell through install, convergence, and cleanup."""
+    _assert_covering_array()
     profiles = _row_profiles(row)
     isolated = IsolatedApmEnvironment.create(tmp_path / row.id, base_env=dict(os.environ))
     environment = isolated.subprocess_env()
@@ -460,7 +563,11 @@ def test_primitive_target_covering_array(
 
     source_factory = LocalPackageFactory(isolated.package_root)
     package_name = f"fixture-{row.id}"
-    manifest_targets = () if row.dynamic_refusal else row.targets
+    manifest_targets = (
+        ()
+        if row.dynamic_refusal or any(KNOWN_TARGETS[target].requires_flag for target in row.targets)
+        else row.targets
+    )
     package_targets = row.widen_targets or manifest_targets
     source = source_factory.create(package_name, targets=package_targets)
     _add_primitives(source_factory, source, row)
@@ -510,6 +617,7 @@ def test_primitive_target_covering_array(
         return
 
     _enable_required_features(runner, row, cwd=cwd, environment=environment)
+    artifacts_before_install = _capture_artifacts(isolated, project.root)
     state_root = isolated.config_root if row.user_scope else project.root
     before = _capture_state(
         row,
@@ -538,6 +646,13 @@ def test_primitive_target_covering_array(
         )
     )
     _run(runner, install_args, scenario_id=f"{row.id}-install", cwd=cwd, environment=environment)
+    artifacts_after_install = _capture_artifacts(isolated, project.root)
+    _assert_row_changes_within_owned_trees(
+        row,
+        profiles,
+        artifacts_before_install,
+        artifacts_after_install,
+    )
     if row.user_scope:
         assert_unchanged(project_before, ArtifactSnapshot.capture(project.root))
     after_install = _capture_state(
@@ -551,12 +666,39 @@ def test_primitive_target_covering_array(
         row,
         before=before,
         after=after_install,
+        profiles=profiles,
         lock_root=state_root,
         deployment_root=deployment_root,
     )
     deployed_records = _deployment_records(after_install, state_root)
 
     _run(runner, install_args, scenario_id=f"{row.id}-reinstall", cwd=cwd, environment=environment)
+    artifacts_after_reinstall = _capture_artifacts(isolated, project.root)
+    known_second_pass_gap = _KNOWN_SECOND_PASS_GAPS.get(
+        (row.targets[0], row.primitives[0], row.user_scope)
+    )
+    if known_second_pass_gap is None:
+        assert_snapshot_set_unchanged(artifacts_after_install, artifacts_after_reinstall)
+    else:
+        assert_only_snapshot_paths_changed(
+            artifacts_after_install,
+            artifacts_after_reinstall,
+            known_second_pass_gap,
+        )
+        instruction_path = isolated.home / ".copilot/copilot-instructions.md"
+        marker = f"# covering-array-{row.id}-instructions"
+        assert instruction_path.read_text(encoding="utf-8").count(marker) == 2
+        _run(
+            runner,
+            install_args,
+            scenario_id=f"{row.id}-third-install",
+            cwd=cwd,
+            environment=environment,
+        )
+        assert_snapshot_set_unchanged(
+            artifacts_after_reinstall,
+            _capture_artifacts(isolated, project.root),
+        )
     if row.user_scope:
         assert_unchanged(project_before, ArtifactSnapshot.capture(project.root))
     after_reinstall = _capture_state(
@@ -565,7 +707,10 @@ def test_primitive_target_covering_array(
         project_root=state_root,
         profiles=profiles,
     )
-    assert after_reinstall.semantic_bytes == after_install.semantic_bytes
+    if known_second_pass_gap is None:
+        assert after_reinstall.semantic_bytes == after_install.semantic_bytes
+    else:
+        assert after_reinstall.semantic_bytes != after_install.semantic_bytes
 
     if row.widen_targets:
         _set_project_targets(project, row.widen_targets)
@@ -648,12 +793,20 @@ def test_primitive_target_covering_array(
             remote,
         )
     )
+    artifacts_before_uninstall = _capture_artifacts(isolated, project.root)
     _run(
         runner,
         uninstall_args,
         scenario_id=f"{row.id}-uninstall",
         cwd=cwd,
         environment=environment,
+    )
+    _assert_row_changes_within_owned_trees(
+        row,
+        profiles,
+        artifacts_before_uninstall,
+        _capture_artifacts(isolated, project.root),
+        allow_manifest=True,
     )
     if row.user_scope:
         assert_unchanged(project_before, ArtifactSnapshot.capture(project.root))
@@ -671,9 +824,9 @@ def test_primitive_target_covering_array(
     )
     if "hooks" in row.primitives:
         marker = f"fixture-{row.id}"
-        for target in row.targets:
-            display = KNOWN_TARGETS[target].hooks_config_display
+        for profile in profiles:
+            display = profile.hooks_config_display
             if display is None:
                 continue
-            sidecar = deployment_root / Path(display).with_name("apm-hooks.json")
+            sidecar = profile.deploy_path(deployment_root, "apm-hooks.json")
             assert not sidecar.exists() or marker not in sidecar.read_text(encoding="utf-8")
