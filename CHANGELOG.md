@@ -14,7 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   omit maintainer-only paths such as `evals/`. Root `SKILL.md` and `apm.yml`
   cannot be ignored.
 
-## [0.29.1] - 2026-09-04
+## [0.29.1] - 2026-09-05
+
+### Security
+
+- `apm install` and registry access now bind credentials to user-configured
+  HTTPS destinations and reject redirects, insecure credential transport, and
+  lockfile-altered endpoints. Inherited policy restrictions are preserved,
+  executable approvals bind to canonical dependency identities, symlinked
+  project deployment roots are rejected, and `git`/`gh` resolve outside the
+  project tree. (#2810)
 
 ### Changed
 
