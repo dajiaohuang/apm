@@ -243,6 +243,7 @@ jobs:
           --junit lifecycle-junit.xml
           --revision '${{ github.sha }}'
           --output lifecycle-interactions.json
+          --mutation-output lifecycle-mutations.json
 
       - name: Upload lifecycle evidence
         if: always()
@@ -252,6 +253,7 @@ jobs:
           path: |
             lifecycle-junit.xml
             lifecycle-interactions.json
+            lifecycle-mutations.json
           retention-days: 14
           if-no-files-found: warn
 
@@ -316,6 +318,8 @@ jobs:
           --junit-dir lifecycle-evidence
           --revision '${{ github.sha }}'
           --output lifecycle-interactions-combined.json
+          --mutation-output lifecycle-mutations-combined.json
+          --require-mutations
           --require-complete
 
       - name: Upload combined lifecycle evidence
@@ -323,7 +327,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: lifecycle-evidence-combined
-          path: lifecycle-interactions-combined.json
+          path: |
+            lifecycle-interactions-combined.json
+            lifecycle-mutations-combined.json
           retention-days: 14
           if-no-files-found: error
 

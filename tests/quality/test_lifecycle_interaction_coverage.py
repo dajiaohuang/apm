@@ -378,12 +378,15 @@ def test_ci_uploads_observed_lifecycle_evidence_even_after_test_failure() -> Non
         "${{ github.sha }}",
         "--output",
         "lifecycle-interactions.json",
+        "--mutation-output",
+        "lifecycle-mutations.json",
     ]
     upload = workflow_step(job, "Upload lifecycle evidence")
     assert upload["if"] == "always()"
     assert set(upload["with"]["path"].splitlines()) == {
         "lifecycle-junit.xml",
         "lifecycle-interactions.json",
+        "lifecycle-mutations.json",
     }
     assert upload["with"]["retention-days"] >= 7
     fan_in = workflow_job(workflow, "integration-tests")
@@ -395,7 +398,14 @@ def test_ci_uploads_observed_lifecycle_evidence_even_after_test_failure() -> Non
     assert combined.get("continue-on-error", False) is False
     assert "--require-complete" in shell_tokens(combined)
     assert "--junit-dir" in shell_tokens(combined)
-    assert workflow_step(fan_in, "Upload combined lifecycle evidence")["if"] == "always()"
+    assert "--require-mutations" in shell_tokens(combined)
+    assert "--mutation-output" in shell_tokens(combined)
+    combined_upload = workflow_step(fan_in, "Upload combined lifecycle evidence")
+    assert combined_upload["if"] == "always()"
+    assert set(combined_upload["with"]["path"].splitlines()) == {
+        "lifecycle-interactions-combined.json",
+        "lifecycle-mutations-combined.json",
+    }
 
 
 def test_report_command_persists_missing_evidence_before_failing_gate(

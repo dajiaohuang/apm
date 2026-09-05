@@ -16,6 +16,13 @@ from tests.utils.lifecycle_interactions import (
     coverage_report,
     execution_from_mapping,
 )
+from tests.utils.lifecycle_mutations import (
+    assert_complete_mutation_evidence,
+    read_mutation_results,
+)
+from tests.utils.lifecycle_mutations import (
+    write_report as write_mutation_report,
+)
 
 
 def read_executions(path: Path) -> tuple[CaseExecution, ...]:
@@ -54,7 +61,11 @@ def main() -> None:
     parser.add_argument("--revision", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--require-complete", action="store_true")
+    parser.add_argument("--mutation-output", type=Path)
+    parser.add_argument("--require-mutations", action="store_true")
     arguments = parser.parse_args()
+    if arguments.require_mutations and arguments.mutation_output is None:
+        parser.error("--require-mutations needs --mutation-output")
     paths = (
         sorted(arguments.junit_dir.rglob("*.xml"))
         if arguments.junit_dir is not None
@@ -87,6 +98,21 @@ def main() -> None:
         f"unexecuted cases: {len(report['unexecuted_case_ids'])}; "
         f"rejected evidence: {len(report['rejected_evidence'])}"
     )
+    if arguments.mutation_output is not None:
+        mutation_results = tuple(result for path in paths for result in read_mutation_results(path))
+        mutation_report = write_mutation_report(
+            arguments.mutation_output,
+            mutation_results,
+            input_revision=arguments.revision,
+        )
+        counts = mutation_report["counts"]
+        print(
+            f"Lifecycle source mutants: {counts['killed']} killed; "
+            f"{counts['survived']} survived; {counts['error']} errors; "
+            f"{len(mutation_report['unexecuted_mutant_ids'])} missing"
+        )
+        if arguments.require_mutations:
+            assert_complete_mutation_evidence(mutation_results)
     if arguments.require_complete:
         assert_complete_evidence((*ROUTING_ROWS, *INTERACTION_ROWS), executions)
 
