@@ -1414,6 +1414,8 @@ class MCPClientAdapter(ABC):
         env_overrides: dict,
         runtime_label: str,
         token_manager_class,
+        *,
+        inject_github_token: bool = True,
     ) -> None:
         """Core implementation of GitHub-token injection and header merging.
 
@@ -1431,11 +1433,14 @@ class MCPClientAdapter(ABC):
             token_manager_class: The ``GitHubTokenManager`` class (or mock) to
                 instantiate.  Passed by the caller so tests can patch the right
                 module-level name.
+            inject_github_token: Whether to add a resolved GitHub token to the
+                generated config. Clients that write project-local config files
+                can disable this and use runtime environment references instead.
         """
         server_name = server_info.get("name", "")
         is_github_server = self._is_github_server(server_name, remote.get("url", ""))
         local_token_injected = False
-        if is_github_server:
+        if is_github_server and inject_github_token:
             _tm = token_manager_class()
             github_token = _tm.get_token_for_purpose("copilot") or os.getenv(
                 "GITHUB_PERSONAL_ACCESS_TOKEN"

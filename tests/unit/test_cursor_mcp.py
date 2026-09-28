@@ -1,7 +1,7 @@
 """Unit tests for CursorClientAdapter and its MCP integrator wiring."""
 
 import json
-import os  # noqa: F401
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -189,6 +189,7 @@ class TestCursorFormatServerConfig(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.cursor_dir = Path(self.tmp.name) / ".cursor"
         self.cursor_dir.mkdir()
+        self.mcp_json = self.cursor_dir / "mcp.json"
 
         self.adapter = CursorClientAdapter()
         self._cwd_patcher = patch("os.getcwd", return_value=self.tmp.name)
@@ -276,6 +277,7 @@ class TestCursorTokenInjection(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.cursor_dir = Path(self.tmp.name) / ".cursor"
         self.cursor_dir.mkdir()
+        self.mcp_json = self.cursor_dir / "mcp.json"
 
         self.adapter = CursorClientAdapter()
         self._cwd_patcher = patch("os.getcwd", return_value=self.tmp.name)
@@ -285,18 +287,28 @@ class TestCursorTokenInjection(unittest.TestCase):
         self._cwd_patcher.stop()
         self.tmp.cleanup()
 
-    def test_github_remote_injects_token(self):
-        """Legitimate GitHub remote must get Authorization header."""
+    def test_github_remote_does_not_persist_automatically_resolved_token(self):
+        """Cursor config must not contain a resolved GitHub token."""
         server_info = {
             "name": "github-mcp-server",
             "remotes": [
                 {"url": "https://api.github.com/v1", "transport_type": "http"},
             ],
         }
-        with patch("apm_cli.adapters.client.cursor.GitHubTokenManager") as mock_tm:
-            mock_tm.return_value.get_token_for_purpose.return_value = "test-tok"
+        with (
+            patch.dict(os.environ, {"GITHUB_PERSONAL_ACCESS_TOKEN": "env-secret"}),
+            patch("apm_cli.adapters.client.cursor.GitHubTokenManager") as mock_tm,
+        ):
+            mock_tm.return_value.get_token_for_purpose.return_value = "manager-secret"
             config = self.adapter._format_server_config(server_info)
-        self.assertEqual(config.get("headers", {}).get("Authorization"), "Bearer test-tok")
+        self.assertNotIn("Authorization", config.get("headers", {}))
+        mock_tm.assert_not_called()
+        self.adapter.update_config({"github-mcp-server": config})
+        stored = self.mcp_json.read_text(encoding="utf-8")
+        self.assertNotIn("env-secret", stored)
+        self.assertNotIn("manager-secret", stored)
+        stored_server = json.loads(stored)["mcpServers"]["github-mcp-server"]
+        self.assertNotIn("Authorization", stored_server)
 
     def test_non_github_remote_no_token(self):
         """Non-GitHub remote must NOT get Authorization header."""
@@ -309,8 +321,8 @@ class TestCursorTokenInjection(unittest.TestCase):
         config = self.adapter._format_server_config(server_info)
         self.assertNotIn("Authorization", config.get("headers", {}))
 
-    def test_registry_header_cannot_override_github_token(self):
-        """Registry-supplied Authorization must not clobber injected GitHub token."""
+    def test_github_runtime_authorization_header_stays_a_reference(self):
+        """Explicit env-backed auth remains a Cursor runtime reference."""
         server_info = {
             "name": "github-mcp-server",
             "remotes": [
@@ -318,15 +330,26 @@ class TestCursorTokenInjection(unittest.TestCase):
                     "url": "https://api.github.com/v1",
                     "transport_type": "http",
                     "headers": [
-                        {"name": "Authorization", "value": "Bearer evil-token"},
+                        {"name": "Authorization", "value": "Bearer ${GITHUB_TOKEN}"},
                     ],
                 },
             ],
         }
-        with patch("apm_cli.adapters.client.cursor.GitHubTokenManager") as mock_tm:
-            mock_tm.return_value.get_token_for_purpose.return_value = "legit-tok"
+        with (
+            patch.dict(os.environ, {"GITHUB_TOKEN": "env-secret"}),
+            patch("apm_cli.adapters.client.cursor.GitHubTokenManager") as mock_tm,
+        ):
+            mock_tm.return_value.get_token_for_purpose.return_value = "manager-secret"
             config = self.adapter._format_server_config(server_info)
-        self.assertEqual(config["headers"]["Authorization"], "Bearer legit-tok")
+        self.assertEqual(config["headers"]["Authorization"], "Bearer ${env:GITHUB_TOKEN}")
+        self.assertNotIn("env-secret", json.dumps(config))
+        self.assertNotIn("manager-secret", json.dumps(config))
+        mock_tm.assert_not_called()
+        self.adapter.update_config({"github-mcp-server": config})
+        stored = self.mcp_json.read_text(encoding="utf-8")
+        self.assertIn("Bearer ${env:GITHUB_TOKEN}", stored)
+        self.assertNotIn("env-secret", stored)
+        self.assertNotIn("manager-secret", stored)
 
     def test_unsupported_packages_raises_valueerror(self):
         """When _select_best_package returns None, raise ValueError instead of silent {}."""

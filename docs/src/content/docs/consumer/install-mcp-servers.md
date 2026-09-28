@@ -282,6 +282,11 @@ when it starts the MCP server and are not written into the project-local
 `.cursor/mcp.json`. Explicit static values in `mcp.env` remain static and
 are written as authored; keep secrets out of those values.
 
+Cursor does not receive APM's automatically resolved GitHub token. For a
+GitHub MCP server in Cursor, declare an env-backed `Authorization` header such
+as `Bearer ${GITHUB_TOKEN}` and make that variable available to Cursor; APM
+writes the Cursor runtime reference instead of the resolved secret.
+
 Separately, APM injects one specific credential automatically for the
 Copilot CLI adapter:
 

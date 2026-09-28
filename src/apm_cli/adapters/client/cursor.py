@@ -71,14 +71,22 @@ class CursorClientAdapter(CopilotClientAdapter):
     def _apply_auth_and_headers(
         self, config, remote, server_info, env_overrides, runtime_label="Cursor"
     ):
-        """Inject GitHub token and registry-supplied headers into *config*.
+        """Merge registry headers without persisting a resolved GitHub token.
 
         Overrides the parent to supply ``GitHubTokenManager`` from *this*
         module's namespace, allowing tests to patch
-        ``apm_cli.adapters.client.cursor.GitHubTokenManager`` correctly.
+        ``apm_cli.adapters.client.cursor.GitHubTokenManager`` correctly. Cursor
+        reads project-local config, so GitHub credentials must be supplied as
+        runtime environment references rather than resolved during install.
         """
         self._apply_auth_and_headers_impl(
-            config, remote, server_info, env_overrides, runtime_label, GitHubTokenManager
+            config,
+            remote,
+            server_info,
+            env_overrides,
+            runtime_label,
+            GitHubTokenManager,
+            inject_github_token=False,
         )
 
     def get_config_path(self):
