@@ -49,6 +49,15 @@ class TestToOpencodeFormat(unittest.TestCase):
         result = OpenCodeClientAdapter._to_opencode_format(copilot, enabled=False)
         self.assertFalse(result["enabled"])
 
+    def test_explicit_enabled_values_keep_their_json_type(self):
+        for enabled in (False, "false", None):
+            with self.subTest(enabled=enabled):
+                result = OpenCodeClientAdapter._to_opencode_format(
+                    {"command": "npx", "args": []}, enabled=enabled
+                )
+                self.assertEqual(result["enabled"], enabled)
+                self.assertIs(type(result["enabled"]), type(enabled))
+
     # -- remote entries --
 
     def test_remote_basic(self):

@@ -481,6 +481,9 @@ class MCPIntegrator:
         if dep.tools:
             info["_apm_tools_override"] = dep.tools
 
+        if dep.has_enabled:
+            info["_apm_opencode_enabled"] = dep.enabled
+
         # Pass through harness-specific extra keys for adapters to merge
         if dep.extra:
             info["_extra"] = dict(dep.extra)
@@ -498,6 +501,12 @@ class MCPIntegrator:
         info = server_info_cache.get(dep.name)
         if not info:
             return
+
+        # Registry data is external input. Never trust a field that collides
+        # with this adapter-only marker from the registry response itself.
+        info.pop("_apm_opencode_enabled", None)
+        if dep.has_enabled:
+            info["_apm_opencode_enabled"] = dep.enabled
 
         # Transport overlay: select matching transport from available options
         if dep.transport:
