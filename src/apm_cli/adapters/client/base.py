@@ -1414,6 +1414,8 @@ class MCPClientAdapter(ABC):
         env_overrides: dict,
         runtime_label: str,
         token_manager_class,
+        *,
+        inject_github_token: bool = True,
     ) -> None:
         """Core implementation of GitHub-token injection and header merging.
 
@@ -1431,19 +1433,40 @@ class MCPClientAdapter(ABC):
             token_manager_class: The ``GitHubTokenManager`` class (or mock) to
                 instantiate.  Passed by the caller so tests can patch the right
                 module-level name.
+            inject_github_token: Whether literal-only targets may add a resolved
+                GitHub token. Runtime-capable targets use a selected env-var
+                reference instead, which never writes the token value.
         """
         server_name = server_info.get("name", "")
         is_github_server = self._is_github_server(server_name, remote.get("url", ""))
         local_token_injected = False
-        if is_github_server:
+        headers = remote.get("headers", []) or []
+        explicit_authorization = any(
+            isinstance(header, dict)
+            and isinstance(header.get("name"), str)
+            and header["name"].casefold() == "authorization"
+            and bool(header.get("value"))
+            for header in headers
+        )
+        if (
+            is_github_server
+            and not explicit_authorization
+            and (self._supports_runtime_env_substitution or inject_github_token)
+        ):
             _tm = token_manager_class()
-            github_token = _tm.get_token_for_purpose("copilot") or os.getenv(
-                "GITHUB_PERSONAL_ACCESS_TOKEN"
-            )
-            if github_token:
-                config["headers"] = {"Authorization": f"Bearer {github_token}"}
-                local_token_injected = True
-        headers = remote.get("headers", [])
+            if self._supports_runtime_env_substitution:
+                token_env_var = _tm.get_token_env_var_for_purpose("copilot")
+                if token_env_var:
+                    placeholder = self._format_runtime_env_placeholder(token_env_var)
+                    config["headers"] = {"Authorization": f"Bearer {placeholder}"}
+                    local_token_injected = True
+            else:
+                github_token = _tm.get_token_for_purpose("copilot") or os.getenv(
+                    "GITHUB_PERSONAL_ACCESS_TOKEN"
+                )
+                if github_token:
+                    config["headers"] = {"Authorization": f"Bearer {github_token}"}
+                    local_token_injected = True
         if headers:
             if "headers" not in config:
                 config["headers"] = {}
@@ -1451,7 +1474,11 @@ class MCPClientAdapter(ABC):
                 header_name = header.get("name", "")
                 header_value = header.get("value", "")
                 if header_name and header_value:
-                    if header_name == "Authorization" and local_token_injected:
+                    if (
+                        isinstance(header_name, str)
+                        and header_name.casefold() == "authorization"
+                        and local_token_injected
+                    ):
                         continue
                     resolved_value = self._resolve_env_variable(
                         header_name, header_value, env_overrides

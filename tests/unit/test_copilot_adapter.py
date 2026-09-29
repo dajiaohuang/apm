@@ -189,7 +189,7 @@ class TestCopilotGithubServerValidation(unittest.TestCase):
         self.assertNotIn("headers", config)
         mock_tokens.assert_not_called()
 
-    def test_remote_allowlisted_name_and_github_hostname_inject_authorization_header(self):
+    def test_remote_allowlisted_name_uses_selected_runtime_token_env_var(self):
         adapter = self._adapter()
         server_info = {
             "id": "remote-github",
@@ -198,15 +198,77 @@ class TestCopilotGithubServerValidation(unittest.TestCase):
         }
 
         mock_token_manager = MagicMock()
-        mock_token_manager.get_token_for_purpose.return_value = "gh-token"
+        mock_token_manager.get_token_env_var_for_purpose.return_value = "GITHUB_APM_PAT"
         with patch(
             "apm_cli.adapters.client.copilot.GitHubTokenManager",
             return_value=mock_token_manager,
         ):
             config = adapter._format_server_config(server_info)
 
-        self.assertEqual(config["headers"]["Authorization"], "Bearer gh-token")
-        mock_token_manager.get_token_for_purpose.assert_called_once_with("copilot")
+        self.assertEqual(config["headers"]["Authorization"], "Bearer ${GITHUB_APM_PAT}")
+        mock_token_manager.get_token_env_var_for_purpose.assert_called_once_with("copilot")
+        mock_token_manager.get_token_for_purpose.assert_not_called()
+
+    def test_runtime_auto_auth_uses_the_actual_precedence_winner(self):
+        adapter = self._adapter()
+        server_info = {
+            "name": "github-mcp-server",
+            "remotes": [{"url": "https://api.github.com/v1"}],
+        }
+        with patch.dict(
+            os.environ,
+            {
+                "GITHUB_TOKEN": "selected-token-secret",
+                "GITHUB_APM_PAT": "lower-priority-token-secret",
+            },
+            clear=True,
+        ):
+            config = adapter._format_server_config(server_info)
+
+        self.assertEqual(config["headers"]["Authorization"], "Bearer ${GITHUB_TOKEN}")
+        self.assertNotIn("selected-token-secret", str(config))
+        self.assertNotIn("lower-priority-token-secret", str(config))
+
+    def test_manifest_authorization_wins_over_automatic_runtime_auth(self):
+        adapter = self._adapter()
+        server_info = {
+            "name": "github-mcp-server",
+            "remotes": [
+                {
+                    "url": "https://api.github.com/v1",
+                    "headers": [{"name": "Authorization", "value": "Bearer ${env:MANIFEST_TOKEN}"}],
+                }
+            ],
+        }
+        with (
+            patch.dict(os.environ, {"GITHUB_COPILOT_PAT": "auto-secret"}, clear=True),
+            patch("apm_cli.adapters.client.copilot.GitHubTokenManager") as mock_tokens,
+        ):
+            config = adapter._format_server_config(server_info)
+
+        self.assertEqual(config["headers"]["Authorization"], "Bearer ${MANIFEST_TOKEN}")
+        self.assertNotIn("auto-secret", str(config))
+        mock_tokens.assert_not_called()
+
+    def test_runtime_reference_is_safe_when_resolved_token_injection_is_disabled(self):
+        adapter = self._adapter()
+        manager = MagicMock()
+        manager.get_token_env_var_for_purpose.return_value = "GITHUB_APM_PAT"
+        token_manager_class = MagicMock(return_value=manager)
+        config = {}
+
+        adapter._apply_auth_and_headers_impl(
+            config,
+            {"url": "https://api.github.com/v1"},
+            {"name": "github-mcp-server"},
+            {},
+            "Copilot CLI",
+            token_manager_class,
+            inject_github_token=False,
+        )
+
+        self.assertEqual(config["headers"]["Authorization"], "Bearer ${GITHUB_APM_PAT}")
+        manager.get_token_for_purpose.assert_not_called()
 
     def test_http_url_rejected(self):
         """http:// URL must be rejected even with valid GitHub hostname."""
@@ -240,13 +302,13 @@ class TestCopilotGithubServerValidation(unittest.TestCase):
             "remotes": [{"url": "https://api.github.com/v1", "transport_type": "http"}],
         }
         mock_token_manager = MagicMock()
-        mock_token_manager.get_token_for_purpose.return_value = "gh-test-token"
+        mock_token_manager.get_token_env_var_for_purpose.return_value = "GITHUB_TOKEN"
         with patch(
             "apm_cli.adapters.client.copilot.GitHubTokenManager",
             return_value=mock_token_manager,
         ):
             config = adapter._format_server_config(server_info)
-        self.assertIn("Authorization", config.get("headers", {}))
+        self.assertEqual(config["headers"]["Authorization"], "Bearer ${GITHUB_TOKEN}")
 
 
 class TestCopilotEnvVarTranslationInHeaders(unittest.TestCase):
