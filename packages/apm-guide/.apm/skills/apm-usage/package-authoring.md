@@ -99,6 +99,14 @@ Per-primitive scan paths for `apm install`:
 | agent | `.apm/agents/` | Yes: `*.agent.md` at root |
 | skill | `.apm/skills/<name>/` | Yes: `skills/<name>/` (SKILL_BUNDLE or MARKETPLACE_PLUGIN) |
 
+Own-project and Git-backed package installs skip symlinked agent source
+files and directories, including `.apm/agents -> ../agents`.
+`apm install` warns with the skipped source path. Use real files and
+directories under `.apm/agents/` or real `*.agent.md` files at root, then
+rerun `apm install`. Local-path dependencies (`./...` or `../...`) still work:
+contained symlinks are validated and copied as real files into
+`apm_modules/` before agent discovery.
+
 **Recommendation for marketplace publishers:** use `.apm/<type>/` for
 every primitive. This is the only layout that is symmetric between
 `apm pack` and `apm install`.
@@ -172,6 +180,9 @@ becomes `PostToolUse` in Claude) and rewrites path variables
 (`${PLUGIN_ROOT}`, `${CURSOR_PLUGIN_ROOT}`, `${CLAUDE_PLUGIN_ROOT}`) to
 the correct target-specific form. Kiro materializes one JSON document per
 hook action under `.kiro/hooks/`.
+
+For Codex, APM wraps flat command entries in hook groups containing a
+nested `hooks` array in `.codex/hooks.json`.
 
 <!-- Keep this table synchronized with docs/src/content/docs/producer/author-primitives/hooks-and-commands.md. -->
 
