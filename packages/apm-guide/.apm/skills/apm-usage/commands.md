@@ -239,7 +239,7 @@ inside nested Git repositories or linked worktrees below its root. This also
 applies to `includes: auto`. Run `apm compile` from the nested checkout when you
 want to compile it.
 
-When `apm install --target copilot` has already deployed instructions to `.github/instructions/`, `apm compile --target copilot` omits `AGENTS.md` entirely if its only content would be the duplicated instructions section. `AGENTS.md` is still generated when it carries non-instruction content such as a constitution. Pass `--force-instructions` (alias: `--no-dedup`) to force full `AGENTS.md` output.
+When `apm install --target copilot` has already deployed no-`applyTo` instructions under `.github/instructions/`, `apm compile --target copilot` omits matching global instruction bodies from `.github/copilot-instructions.md` so Copilot does not load them twice. It also omits `AGENTS.md` when its only content would be the duplicated instructions section; `AGENTS.md` is still generated when it carries non-instruction content such as a constitution. Pass `--force-instructions` (alias: `--no-dedup`) to intentionally include the duplicated content.
 
 **Distributed managed sections.** With `compilation.agents_md.mode:
 managed_section`, existing distributed `AGENTS.md` files retain content

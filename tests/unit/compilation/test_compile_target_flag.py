@@ -476,6 +476,53 @@ Use type hints in Python code.
         assert second.stats["copilot_root_instructions_removed"] == 0
         assert any("Build ID does not match" in warning for warning in second.warnings)
 
+    def test_copilot_dedup_preserves_symbolic_link_and_target(self, temp_project):
+        """Cleanup must retain a symlink instead of unlinking its target entry."""
+        instruction_path = temp_project / ".apm/instructions/contributing.instructions.md"
+        primitives = PrimitiveCollection()
+        primitives.add_primitive(
+            Instruction(
+                name="contributing",
+                file_path=instruction_path,
+                description="General contributing guidance",
+                apply_to="",
+                content="# Contributing\n\nRun focused tests first.",
+                author="test",
+                source="local",
+            )
+        )
+        compiler = AgentsCompiler(str(temp_project))
+        first = compiler.compile(
+            CompilationConfig(target="vscode", dry_run=False, single_agents=True),
+            primitives,
+        )
+        assert first.success
+
+        root_file = temp_project / ".github" / "copilot-instructions.md"
+        target = temp_project / "preserved-user-file.md"
+        target.write_text("user-owned content\n", encoding="utf-8")
+        root_file.unlink()
+        try:
+            root_file.symlink_to(target)
+        except OSError as exc:
+            pytest.skip(f"file symlinks are unavailable: {exc}")
+
+        rules_dir = temp_project / ".github" / "instructions"
+        rules_dir.mkdir(parents=True)
+        (rules_dir / "contributing.instructions.md").write_text(
+            "# Contributing\n\nRun focused tests first.\n",
+            encoding="utf-8",
+        )
+        second = compiler.compile(
+            CompilationConfig(target="minimal", dry_run=False, single_agents=True),
+            primitives,
+        )
+
+        assert second.success
+        assert root_file.is_symlink()
+        assert target.read_text(encoding="utf-8") == "user-owned content\n"
+        assert second.stats["copilot_root_instructions_removed"] == 0
+
     def test_target_minimal_does_not_write_copilot_root_instructions(self, temp_project):
         """Minimal target must stay AGENTS-only even when global instructions exist."""
         primitives = PrimitiveCollection()

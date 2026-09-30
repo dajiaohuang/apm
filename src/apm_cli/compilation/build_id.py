@@ -15,8 +15,11 @@ compiled-output write sites must route through ``CompiledOutputWriter``
 """
 
 import hashlib
+import re
 
 from .constants import BUILD_ID_PLACEHOLDER
+
+_BUILD_ID_LINE_RE = re.compile(r"^<!-- Build ID: ([0-9a-f]{12}) -->$")
 
 
 def stabilize_build_id(content: str) -> str:
@@ -35,3 +38,20 @@ def stabilize_build_id(content: str) -> str:
     build_id = hashlib.sha256("\n".join(hash_input_lines).encode("utf-8")).hexdigest()[:12]
 
     return content.replace(BUILD_ID_PLACEHOLDER, f"<!-- Build ID: {build_id} -->", 1)
+
+
+def has_valid_build_id(content: str) -> bool:
+    """Return whether content has one Build ID matching its other lines."""
+    lines = content.splitlines()
+    matches = [
+        (index, match)
+        for index, line in enumerate(lines)
+        if (match := _BUILD_ID_LINE_RE.fullmatch(line)) is not None
+    ]
+    if len(matches) != 1:
+        return False
+
+    index, match = matches[0]
+    hash_input = "\n".join(line for line_index, line in enumerate(lines) if line_index != index)
+    expected = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()[:12]
+    return match.group(1) == expected

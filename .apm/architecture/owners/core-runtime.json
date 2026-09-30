@@ -50,6 +50,13 @@
       "guards": ["registry-delegation-compiled-output-writes"]
     },
     {
+      "id": "build-id-content-verification",
+      "decision": "Build ID creation and verification",
+      "owner": "compilation/build_id.py",
+      "selectors": ["src/apm_cli/compilation/build_id.py"],
+      "guards": ["registry-delegation-build-id-verification"]
+    },
+    {
       "id": "distributed-agents-output-preparation",
       "decision": "Agent root-context output eligibility and content preparation",
       "owner": "compilation/agents_compiler.py with compilation/root_context_protection.py",

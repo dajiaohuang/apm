@@ -5,9 +5,7 @@ full content assembly. This keeps repeated compiles byte-identical when source
 primitives & constitution are unchanged.
 """
 
-import hashlib
 import logging
-import re
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple  # noqa: UP035
@@ -26,6 +24,7 @@ from ..primitives.models import Instruction, PrimitiveCollection
 from ..utils.path_security import PathTraversalError, ensure_path_within
 from ..utils.paths import portable_relpath, resolve_base_and_source_dirs
 from ..version import get_version
+from .build_id import has_valid_build_id, stabilize_build_id
 from .claude_formatter import CLAUDE_HEADER, ClaudeFormatter
 from .constants import (
     AGENTS_MD_GENERATED_MARKER,
@@ -69,24 +68,6 @@ _AGENTS_ROOT_GENERATED_MARKERS = (
 )
 # Compatibility alias for callers that imported the former module constant.
 _COPILOT_ROOT_GENERATED_MARKER = AGENTS_MD_GENERATED_MARKER
-_BUILD_ID_LINE_RE = re.compile(r"^<!-- Build ID: ([0-9a-f]{12}) -->$")
-
-
-def _has_valid_build_id(content: str) -> bool:
-    """Return whether content contains one Build ID matching its other lines."""
-    lines = content.splitlines()
-    matches = [
-        (index, match)
-        for index, line in enumerate(lines)
-        if (match := _BUILD_ID_LINE_RE.fullmatch(line)) is not None
-    ]
-    if len(matches) != 1:
-        return False
-
-    index, match = matches[0]
-    hash_input = "\n".join(line for line_index, line in enumerate(lines) if line_index != index)
-    expected = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()[:12]
-    return match.group(1) == expected
 
 
 def _detect_deployed_instructions(
@@ -1753,16 +1734,7 @@ class AgentsCompiler:
 
     def _finalize_build_id(self, content: str) -> str:
         """Replace the build-id placeholder with a deterministic content hash."""
-        lines = content.splitlines()
-        try:
-            idx = lines.index(BUILD_ID_PLACEHOLDER)
-        except ValueError:
-            return content
-
-        hash_input_lines = [line for i, line in enumerate(lines) if i != idx]
-        build_id = hashlib.sha256("\n".join(hash_input_lines).encode("utf-8")).hexdigest()[:12]
-        lines[idx] = f"<!-- Build ID: {build_id} -->"
-        return "\n".join(lines) + ("\n" if content.endswith("\n") else "")
+        return stabilize_build_id(content)
 
     def _cleanup_copilot_root_instructions(
         self,
@@ -1787,7 +1759,7 @@ class AgentsCompiler:
             if not has_generated_marker_header(existing, (AGENTS_MD_GENERATED_MARKER,)):
                 result.stats.setdefault("copilot_root_instructions_removed", 0)
                 return result
-            if not _has_valid_build_id(existing):
+            if not has_valid_build_id(existing):
                 result.warnings.append(
                     f"Retained {portable_relpath(output_path, self.base_dir)}: "
                     "the generated marker is present, but the Build ID does not match "
