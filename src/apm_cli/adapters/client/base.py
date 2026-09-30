@@ -1414,8 +1414,6 @@ class MCPClientAdapter(ABC):
         env_overrides: dict,
         runtime_label: str,
         token_manager_class,
-        *,
-        inject_github_token: bool = True,
     ) -> None:
         """Core implementation of GitHub-token injection and header merging.
 
@@ -1433,22 +1431,37 @@ class MCPClientAdapter(ABC):
             token_manager_class: The ``GitHubTokenManager`` class (or mock) to
                 instantiate.  Passed by the caller so tests can patch the right
                 module-level name.
-            inject_github_token: Whether to add a resolved GitHub token to the
-                generated config. Clients that write project-local config files
-                can disable this and use runtime environment references instead.
         """
+        from ...core.auth import AuthResolver
+        from ...models.dependency.mcp import ManifestHeaderValue
+
         server_name = server_info.get("name", "")
         is_github_server = self._is_github_server(server_name, remote.get("url", ""))
         local_token_injected = False
-        if is_github_server and inject_github_token:
-            _tm = token_manager_class()
-            github_token = _tm.get_token_for_purpose("copilot") or os.getenv(
-                "GITHUB_PERSONAL_ACCESS_TOKEN"
+        headers = remote.get("headers", []) or []
+        explicit_authorization = any(
+            isinstance(header, dict)
+            and isinstance(header.get("name"), str)
+            and header["name"].casefold() == "authorization"
+            and isinstance(header.get("value"), ManifestHeaderValue)
+            and bool(header.get("value"))
+            for header in headers
+        )
+        if is_github_server and not explicit_authorization:
+            resolver = AuthResolver(
+                token_manager=token_manager_class(), allow_external_fallback=False
             )
-            if github_token:
-                config["headers"] = {"Authorization": f"Bearer {github_token}"}
+            selected = resolver.resolve_github_mcp_token(
+                source_only=self._supports_runtime_env_substitution
+            )
+            if selected:
+                credential = (
+                    self._format_runtime_env_placeholder(selected)
+                    if self._supports_runtime_env_substitution
+                    else selected
+                )
+                config.setdefault("headers", {})["Authorization"] = f"Bearer {credential}"
                 local_token_injected = True
-        headers = remote.get("headers", [])
         if headers:
             if "headers" not in config:
                 config["headers"] = {}
@@ -1456,8 +1469,15 @@ class MCPClientAdapter(ABC):
                 header_name = header.get("name", "")
                 header_value = header.get("value", "")
                 if header_name and header_value:
-                    if header_name == "Authorization" and local_token_injected:
-                        continue
+                    if header_name.casefold() == "authorization":
+                        if local_token_injected or (
+                            explicit_authorization
+                            and not isinstance(header_value, ManifestHeaderValue)
+                        ):
+                            continue
+                        for key in list(config["headers"]):
+                            if key.casefold() == "authorization":
+                                del config["headers"][key]
                     resolved_value = self._resolve_env_variable(
                         header_name, header_value, env_overrides
                     )

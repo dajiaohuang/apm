@@ -507,6 +507,15 @@ dependencies:
         callbackPort: 3118
 ```
 
+For a recognized GitHub MCP server, automatic auth follows the target's
+runtime support and uses the selected token environment variable name on
+runtime-capable targets. A manifest `Authorization` header takes
+precedence. Existing generated entries are not rewritten automatically;
+remove the affected server entry and reinstall it after upgrading. Rotate
+any credential that was committed or otherwise exposed. See the [MCP
+Servers guide](../../../../../docs/src/content/docs/consumer/install-mcp-servers.md#token-injection-github-mcp-server)
+for token selection details.
+
 MCP Registry v0.1 uses `registryType: oci` for container packages. APM
 maps that type to the Docker launcher automatically, preserves Docker
 run options before the image, and appends package arguments after the

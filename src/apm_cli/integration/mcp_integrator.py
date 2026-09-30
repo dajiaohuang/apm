@@ -35,6 +35,7 @@ from apm_cli.integration.mcp_config_view import (
     _get_server_configs,
     _get_server_provenance,
 )
+from apm_cli.models.dependency.mcp import ManifestHeaderValue
 from apm_cli.runtime.utils import find_runtime_binary
 from apm_cli.utils.atomic_io import atomic_write_text
 from apm_cli.utils.console import (
@@ -449,7 +450,9 @@ class MCPIntegrator:
                 "url": dep.url or "",
             }
             if dep.headers:
-                remote["headers"] = [{"name": k, "value": v} for k, v in dep.headers.items()]
+                remote["headers"] = [
+                    {"name": k, "value": ManifestHeaderValue(v)} for k, v in dep.headers.items()
+                ]
             info["remotes"] = [remote]
         else:
             # Build as a stdio package
@@ -526,10 +529,12 @@ class MCPIntegrator:
                 existing_headers = remote.get("headers", [])
                 if isinstance(existing_headers, builtins.list):
                     for k, v in dep.headers.items():
-                        existing_headers.append({"name": k, "value": v})
+                        existing_headers.append({"name": k, "value": ManifestHeaderValue(v)})
                     remote["headers"] = existing_headers
                 elif isinstance(existing_headers, builtins.dict):
-                    existing_headers.update(dep.headers)
+                    existing_headers.update(
+                        {k: ManifestHeaderValue(v) for k, v in dep.headers.items()}
+                    )
 
         # Args overlay: merge into package runtime arguments
         if dep.args and "packages" in info:

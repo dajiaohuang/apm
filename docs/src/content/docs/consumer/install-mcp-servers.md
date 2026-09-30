@@ -282,17 +282,13 @@ when it starts the MCP server and are not written into the project-local
 `.cursor/mcp.json`. Explicit static values in `mcp.env` remain static and
 are written as authored; keep secrets out of those values.
 
-Cursor does not receive APM's automatically resolved GitHub token. For a
-GitHub MCP server in Cursor, declare an env-backed `Authorization` header such
-as `Bearer ${GITHUB_TOKEN}` and make that variable available to Cursor; APM
-writes the Cursor runtime reference instead of the resolved secret.
+APM translates supported environment-variable references using each
+target's native syntax. It also injects one specific GitHub credential
+automatically when the server is recognized as the GitHub MCP server:
 
-Separately, APM injects one specific credential automatically for the
-Copilot CLI adapter:
-
-When the Copilot CLI adapter writes a remote MCP config and the
-server is identified as the GitHub MCP server, APM resolves a token
-and adds an `Authorization: Bearer <token>` header.
+When an adapter using the shared GitHub auth path writes a remote MCP
+config and the server is identified as the GitHub MCP server, APM selects
+a token source and applies the target's auth behavior described below.
 
 The server is identified as "GitHub" only when it satisfies **both** of
 these narrow checks
@@ -309,15 +305,33 @@ This is a parsed-host allowlist on hostname, not a substring check.
 A URL like `https://github.com.evil.example` does not match because
 the parsed hostname is `github.com.evil.example`, not `github.com`.
 
-The token is resolved from this chain (first non-empty wins):
+The token is selected from this chain (first non-empty wins):
 
 1. `GITHUB_COPILOT_PAT`
 2. `GITHUB_TOKEN`
 3. `GITHUB_APM_PAT`
 4. `GITHUB_PERSONAL_ACCESS_TOKEN` (Copilot CLI compat)
 
-If none are set, no header is injected and the server is written
-without auth -- you will get an unauthenticated request at runtime.
+If the manifest declares a nonempty `Authorization` header (case-insensitive),
+that explicit value takes precedence over automatic GitHub authentication.
+Registry-provided headers alone do not disable automatic authentication.
+Environment references are translated according to the target's interpolation
+rules. This MCP selection is environment-only: it does not use repository
+authentication's per-org variables or credential helpers.
+
+For a target that supports runtime environment substitution, automatic
+GitHub auth writes a target-native reference to the selected variable
+(for example, `${GITHUB_TOKEN}` or `${env:GITHUB_TOKEN}`); the resolved
+credential value is not written into the generated config. Literal-only
+targets keep their existing automatic-token behavior. If none of the
+listed variables is set, no automatic header is added.
+
+Existing generated MCP entries are not rewritten automatically when
+their server name is already present. After upgrading from a version that
+wrote a resolved credential, remove only the affected server entry from
+the target config and reinstall that MCP server. If the credential was
+committed or otherwise exposed, rotate it as well; removing the config
+entry does not revoke a credential.
 For other authenticated remote servers, set headers explicitly with
 `--header Authorization="Bearer ${MY_TOKEN}"`.
 

@@ -296,19 +296,22 @@ class TestCursorTokenInjection(unittest.TestCase):
             ],
         }
         with (
-            patch.dict(os.environ, {"GITHUB_PERSONAL_ACCESS_TOKEN": "env-secret"}),
+            patch.dict(os.environ, {"GITHUB_PERSONAL_ACCESS_TOKEN": "env-secret"}, clear=True),
             patch("apm_cli.adapters.client.cursor.GitHubTokenManager") as mock_tm,
         ):
             mock_tm.return_value.get_token_for_purpose.return_value = "manager-secret"
+            mock_tm.return_value.get_token_env_var_for_purpose.return_value = None
             config = self.adapter._format_server_config(server_info)
-        self.assertNotIn("Authorization", config.get("headers", {}))
-        mock_tm.assert_not_called()
+        expected = "Bearer ${env:GITHUB_PERSONAL_ACCESS_TOKEN}"
+        self.assertEqual(config["headers"]["Authorization"], expected)
+        mock_tm.return_value.get_token_env_var_for_purpose.assert_called_once_with("copilot")
+        mock_tm.return_value.get_token_for_purpose.assert_not_called()
         self.adapter.update_config({"github-mcp-server": config})
         stored = self.mcp_json.read_text(encoding="utf-8")
         self.assertNotIn("env-secret", stored)
         self.assertNotIn("manager-secret", stored)
         stored_server = json.loads(stored)["mcpServers"]["github-mcp-server"]
-        self.assertNotIn("Authorization", stored_server)
+        self.assertEqual(stored_server["headers"]["Authorization"], expected)
 
     def test_non_github_remote_no_token(self):
         """Non-GitHub remote must NOT get Authorization header."""
@@ -323,6 +326,8 @@ class TestCursorTokenInjection(unittest.TestCase):
 
     def test_github_runtime_authorization_header_stays_a_reference(self):
         """Explicit env-backed auth remains a Cursor runtime reference."""
+        from apm_cli.models.dependency.mcp import ManifestHeaderValue
+
         server_info = {
             "name": "github-mcp-server",
             "remotes": [
@@ -335,8 +340,10 @@ class TestCursorTokenInjection(unittest.TestCase):
                 },
             ],
         }
+        header = server_info["remotes"][0]["headers"][0]
+        header["value"] = ManifestHeaderValue(header["value"])
         with (
-            patch.dict(os.environ, {"GITHUB_TOKEN": "env-secret"}),
+            patch.dict(os.environ, {"GITHUB_TOKEN": "env-secret"}, clear=True),
             patch("apm_cli.adapters.client.cursor.GitHubTokenManager") as mock_tm,
         ):
             mock_tm.return_value.get_token_for_purpose.return_value = "manager-secret"

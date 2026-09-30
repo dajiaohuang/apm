@@ -91,7 +91,6 @@ class CursorClientAdapter(CopilotClientAdapter):
             env_overrides,
             runtime_label,
             GitHubTokenManager,
-            inject_github_token=False,
         )
 
     def get_config_path(self):
