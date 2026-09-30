@@ -309,8 +309,10 @@ class TestCursorTokenInjection(unittest.TestCase):
         config = self.adapter._format_server_config(server_info)
         self.assertNotIn("Authorization", config.get("headers", {}))
 
-    def test_explicit_registry_authorization_wins_over_github_token(self):
-        """An explicit Authorization header takes precedence over auto auth."""
+    def test_explicit_manifest_authorization_wins_over_github_token(self):
+        """Only a manifest-authored Authorization header overrides auto auth."""
+        from apm_cli.models.dependency.mcp import ManifestHeaderValue
+
         server_info = {
             "name": "github-mcp-server",
             "remotes": [
@@ -323,6 +325,8 @@ class TestCursorTokenInjection(unittest.TestCase):
                 },
             ],
         }
+        header = server_info["remotes"][0]["headers"][0]
+        header["value"] = ManifestHeaderValue(header["value"])
         with patch("apm_cli.adapters.client.cursor.GitHubTokenManager") as mock_tm:
             mock_tm.return_value.get_token_for_purpose.return_value = "legit-tok"
             config = self.adapter._format_server_config(server_info)

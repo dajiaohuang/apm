@@ -306,9 +306,12 @@ The token is selected from this chain (first non-empty wins):
 3. `GITHUB_APM_PAT`
 4. `GITHUB_PERSONAL_ACCESS_TOKEN` (Copilot CLI compat)
 
-If the manifest declares an `Authorization` header, that explicit value
-takes precedence over automatic GitHub authentication. Its environment
-references are translated according to the target's interpolation rules.
+If the manifest declares a nonempty `Authorization` header (case-insensitive),
+that explicit value takes precedence over automatic GitHub authentication.
+Registry-provided headers alone do not disable automatic authentication.
+Environment references are translated according to the target's interpolation
+rules. This MCP selection is environment-only: it does not use repository
+authentication's per-org variables or credential helpers.
 
 For a target that supports runtime environment substitution, automatic
 GitHub auth writes a target-native reference to the selected variable

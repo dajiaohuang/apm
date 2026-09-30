@@ -332,14 +332,8 @@ class GitHubTokenManager:
         if env is None:
             env = os.environ
 
-        if purpose not in self.TOKEN_PRECEDENCE:
-            raise ValueError(f"Unknown purpose: {purpose}")
-
-        for token_var in self.TOKEN_PRECEDENCE[purpose]:
-            token = env.get(token_var)
-            if token:
-                return token
-        return None
+        source = self.get_token_env_var_for_purpose(purpose, env)
+        return env[source] if source is not None else None
 
     def get_token_env_var_for_purpose(
         self, purpose: str, env: dict[str, str] | None = None
@@ -347,10 +341,8 @@ class GitHubTokenManager:
         """Return the selected environment variable name without revealing its value.
 
         The selected name follows the same precedence as
-        :meth:`get_token_for_purpose`. Copilot's historical
-        ``GITHUB_PERSONAL_ACCESS_TOKEN`` fallback is included after that
-        precedence chain because the MCP adapter has long accepted it as a
-        compatibility source.
+        :meth:`get_token_for_purpose`. Caller-specific compatibility sources
+        are selected by AuthResolver, not by this low-level lookup.
         """
         if env is None:
             env = os.environ
@@ -362,8 +354,6 @@ class GitHubTokenManager:
             if env.get(token_var):
                 return token_var
 
-        if purpose == "copilot" and env.get("GITHUB_PERSONAL_ACCESS_TOKEN"):
-            return "GITHUB_PERSONAL_ACCESS_TOKEN"
         return None
 
     def get_token_with_credential_fallback(

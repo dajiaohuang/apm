@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from apm_cli.adapters.client.copilot import CopilotClientAdapter
-from apm_cli.models.dependency.mcp import TrustedEnvLiteral
+from apm_cli.models.dependency.mcp import ManifestHeaderValue, TrustedEnvLiteral
 
 
 class TestCopilotRemoteTransportValidation(unittest.TestCase):
@@ -240,6 +240,8 @@ class TestCopilotGithubServerValidation(unittest.TestCase):
                 }
             ],
         }
+        header = server_info["remotes"][0]["headers"][0]
+        header["value"] = ManifestHeaderValue(header["value"])
         with (
             patch.dict(os.environ, {"GITHUB_COPILOT_PAT": "auto-secret"}, clear=True),
             patch("apm_cli.adapters.client.copilot.GitHubTokenManager") as mock_tokens,
@@ -250,25 +252,29 @@ class TestCopilotGithubServerValidation(unittest.TestCase):
         self.assertNotIn("auto-secret", str(config))
         mock_tokens.assert_not_called()
 
-    def test_runtime_reference_is_safe_when_resolved_token_injection_is_disabled(self):
+    def test_shared_auth_routes_runtime_source_selection_through_auth_resolver(self):
         adapter = self._adapter()
         manager = MagicMock()
         manager.get_token_env_var_for_purpose.return_value = "GITHUB_APM_PAT"
         token_manager_class = MagicMock(return_value=manager)
         config = {}
 
-        adapter._apply_auth_and_headers_impl(
-            config,
-            {"url": "https://api.github.com/v1"},
-            {"name": "github-mcp-server"},
-            {},
-            "Copilot CLI",
-            token_manager_class,
-            inject_github_token=False,
-        )
+        with patch("apm_cli.core.auth.AuthResolver") as resolver:
+            resolver.return_value.resolve_github_mcp_token.return_value = "GITHUB_APM_PAT"
+            adapter._apply_auth_and_headers_impl(
+                config,
+                {"url": "https://api.github.com/v1"},
+                {"name": "github-mcp-server"},
+                {},
+                "Copilot CLI",
+                token_manager_class,
+            )
+        resolver.assert_called_once_with(token_manager=manager, allow_external_fallback=False)
+        resolver.return_value.resolve_github_mcp_token.assert_called_once_with(source_only=True)
 
         self.assertEqual(config["headers"]["Authorization"], "Bearer ${GITHUB_APM_PAT}")
         manager.get_token_for_purpose.assert_not_called()
+        manager.get_token_env_var_for_purpose.assert_not_called()
 
     def test_http_url_rejected(self):
         """http:// URL must be rejected even with valid GitHub hostname."""
