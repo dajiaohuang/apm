@@ -15,8 +15,10 @@ literal-only targets retain their existing token behavior.
 
 A nonempty manifest `Authorization` header wins, regardless of header-name
 casing. Registry headers alone do not disable automatic authentication.
-Existing generated entries are not rewritten: remove only the affected
-server entry and reinstall to repair it. Rotate exposed credentials.
+Reinstalling the same declaration does not automatically repair existing
+credentials. Follow [Repairing existing credentials](https://microsoft.github.io/apm/consumer/install-mcp-servers/#repairing-existing-credentials)
+to preserve custom fields, use environment references and rotate exposed
+credentials.
 See [GitHub MCP token injection](https://microsoft.github.io/apm/consumer/install-mcp-servers/#token-injection-github-mcp-server).
 
 ## Token precedence chain

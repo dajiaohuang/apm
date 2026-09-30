@@ -320,12 +320,10 @@ credential value is not written into the generated config. Literal-only
 targets keep their existing automatic-token behavior. If none of the
 listed variables is set, no automatic header is added.
 
-Existing generated MCP entries are not rewritten automatically when
-their server name is already present. After upgrading from a version that
-wrote a resolved credential, remove only the affected server entry from
-the target config and reinstall that MCP server. If the credential was
-committed or otherwise exposed, rotate it as well; removing the config
-entry does not revoke a credential.
+Reinstalling the same declaration does not automatically repair credentials
+already written to runtime config. Follow
+[Repairing existing credentials](#repairing-existing-credentials) to preserve
+custom settings and rotate exposed credentials.
 For other authenticated remote servers, set headers explicitly with
 `--header Authorization="Bearer ${MY_TOKEN}"`.
 
@@ -341,6 +339,24 @@ Re-run `apm install --mcp NAME ...` against an existing entry:
 | Existing `NAME`, different config, CI | Refuses with exit 2. Re-run with `--force`. |
 
 Use `--dry-run` to preview the manifest change without writing.
+
+### Repairing existing credentials
+
+First replace any authored static credential in `apm.yml` with an environment
+reference. Otherwise regenerating the entry writes that static value again.
+Follow the target's [interpolation rules](../../reference/manifest-schema/#424-variable-references-in-headers-and-env)
+when making variables available and editing its config.
+
+For Cursor, replace only the affected header or `env` values in
+`.cursor/mcp.json` with `${env:NAME}` references. Preserve the authorization
+scheme, for example `Bearer ${env:GITHUB_TOKEN}`, and make the variable
+available to Cursor. Keep all other fields and servers, and inspect the diff.
+An ordinary reinstall of the same declaration does not perform this repair.
+
+If you instead regenerate an entry, save its custom fields first, remove only
+that server entry, reinstall, and restore those fields without restoring the
+old credential. Do not delete the whole config file. Rotate any credential
+exposed in a committed or shared config; editing the file does not revoke it.
 
 ## Sibling commands
 

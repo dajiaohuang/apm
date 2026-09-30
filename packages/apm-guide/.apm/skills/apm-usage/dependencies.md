@@ -509,9 +509,9 @@ dependencies:
 For a recognized GitHub MCP server, automatic auth follows the target's
 runtime support and uses the selected token environment variable name on
 runtime-capable targets. A manifest `Authorization` header takes
-precedence. Existing generated entries are not rewritten automatically;
-remove the affected server entry and reinstall it after upgrading. Rotate
-any credential that was committed or otherwise exposed. See the [MCP
+precedence. Follow [Repairing existing credentials](https://microsoft.github.io/apm/consumer/install-mcp-servers/#repairing-existing-credentials)
+to replace previously written credentials without losing custom fields.
+See the [MCP
 Servers guide](../../../../../docs/src/content/docs/consumer/install-mcp-servers.md#token-injection-github-mcp-server)
 for token selection details.
 
