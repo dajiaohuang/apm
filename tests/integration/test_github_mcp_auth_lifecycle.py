@@ -71,9 +71,20 @@ def _assert_no_secret(root: Path, secrets: list[str]) -> None:
     assert config["user-setting"] is True
 
 
-@pytest.mark.parametrize("winner", range(len(SOURCES) + 1))
+@pytest.mark.parametrize(
+    "winner,manifest_headers",
+    [
+        *((winner, {}) for winner in range(len(SOURCES) + 1)),
+        (1, {"authorization": None}),
+        (1, {"authorization": False}),
+        (1, {"authorization": 0}),
+    ],
+)
 def test_installed_auto_auth_uses_selected_source(
-    tmp_path: Path, apm_binary_path: Path, winner: int
+    tmp_path: Path,
+    apm_binary_path: Path,
+    winner: int,
+    manifest_headers: dict[str, str | bool | int | None],
 ) -> None:
     """All four precedence winners and the absent-source case reach disk safely."""
     isolated = IsolatedApmEnvironment.create(tmp_path / "source", base_env=dict(os.environ))
@@ -92,6 +103,7 @@ def test_installed_auto_auth_uses_selected_source(
                 "registry": False,
                 "transport": "http",
                 "url": "https://api.githubcopilot.com/mcp/",
+                "headers": manifest_headers,
             },
         ),
     )
@@ -142,12 +154,13 @@ def test_global_install_keeps_runtime_auth_outside_project(
         ({"authorization": ""}, "Bearer ${GITHUB_TOKEN}"),
         ({"authorization": "Bearer ${env:USER_PAT}"}, "Bearer ${USER_PAT}"),
         ({"AUTHORIZATION": "explicit-static-value"}, "explicit-static-value"),
-    ],
+    ]
+    + [({"authorization": value}, "Bearer ${GITHUB_TOKEN}") for value in (None, False, 0)],
 )
 def test_registry_provenance_survives_install_reinstall_and_repair(
     tmp_path: Path,
     apm_binary_path: Path,
-    manifest_headers: dict[str, str],
+    manifest_headers: dict[str, str | bool | int | None],
     expected: str,
 ) -> None:
     """Registry defaults cannot impersonate users, including after targeted repair."""

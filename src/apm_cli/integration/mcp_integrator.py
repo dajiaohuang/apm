@@ -451,7 +451,8 @@ class MCPIntegrator:
             }
             if dep.headers:
                 remote["headers"] = [
-                    {"name": k, "value": ManifestHeaderValue(v)} for k, v in dep.headers.items()
+                    {"name": k, "value": ManifestHeaderValue(v) if isinstance(v, str) else v}
+                    for k, v in dep.headers.items()
                 ]
             info["remotes"] = [remote]
         else:
@@ -529,11 +530,19 @@ class MCPIntegrator:
                 existing_headers = remote.get("headers", [])
                 if isinstance(existing_headers, builtins.list):
                     for k, v in dep.headers.items():
-                        existing_headers.append({"name": k, "value": ManifestHeaderValue(v)})
+                        existing_headers.append(
+                            {
+                                "name": k,
+                                "value": ManifestHeaderValue(v) if isinstance(v, str) else v,
+                            }
+                        )
                     remote["headers"] = existing_headers
                 elif isinstance(existing_headers, builtins.dict):
                     existing_headers.update(
-                        {k: ManifestHeaderValue(v) for k, v in dep.headers.items()}
+                        {
+                            k: ManifestHeaderValue(v) if isinstance(v, str) else v
+                            for k, v in dep.headers.items()
+                        }
                     )
 
         # Args overlay: merge into package runtime arguments
