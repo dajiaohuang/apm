@@ -15,6 +15,7 @@ from pathlib import Path
 
 from ...core.token_manager import GitHubTokenManager
 from ...models.dependency.mcp import TrustedEnvLiteral
+from .base import _stringify_env_literal
 from .copilot import CopilotClientAdapter
 
 
@@ -40,7 +41,11 @@ class CursorClientAdapter(CopilotClientAdapter):
         """Return Cursor's native env-var placeholder syntax."""
         return "${env:" + name + "}"
 
-    def _resolve_environment_variables(self, env_vars, env_overrides=None):
+    def _resolve_environment_variables(
+        self,
+        env_vars: dict[str, object] | list[dict[str, object]],
+        env_overrides: dict[str, str] | None = None,
+    ) -> dict[str, str]:
         """Translate explicit env references while preserving authored literals.
 
         APM's shared translate-mode dict resolver treats ordinary string
@@ -51,17 +56,17 @@ class CursorClientAdapter(CopilotClientAdapter):
         if not isinstance(env_vars, dict):
             return super()._resolve_environment_variables(env_vars, env_overrides)
 
-        resolved: dict = {}
+        resolved: dict[str, str] = {}
         self._last_env_placeholder_keys = set()
         for name, value in env_vars.items():
-            if not name:
+            if not name or value is None:
                 continue
             if isinstance(value, TrustedEnvLiteral):
                 resolved[name] = value
             elif isinstance(value, str):
                 resolved[name] = self._resolve_env_variable(name, value, env_overrides)
             else:
-                resolved[name] = value
+                resolved[name] = _stringify_env_literal(value)
         return resolved
 
     # ------------------------------------------------------------------ #

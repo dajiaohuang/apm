@@ -550,6 +550,11 @@ class TestCursorRuntimeEnvSubstitution(unittest.TestCase):
             result = adapter._resolve_environment_variables(
                 {
                     "STATIC": "authored-value",
+                    "EMPTY": "",
+                    "PORT": 3000,
+                    "DEBUG": False,
+                    "RATE": 0.5,
+                    "OPTIONAL": None,
                     "TRUSTED": TrustedEnvLiteral("${MY_TOKEN}"),
                     "REFERENCE": "${MY_TOKEN}",
                     "ENVPREFIX": "${env:MY_TOKEN}",
@@ -558,6 +563,11 @@ class TestCursorRuntimeEnvSubstitution(unittest.TestCase):
                 env_overrides={"MY_TOKEN": "secret-value"},
             )
         self.assertEqual(result["STATIC"], "authored-value")
+        self.assertEqual(result["EMPTY"], "")
+        self.assertEqual(result["PORT"], "3000")
+        self.assertEqual(result["DEBUG"], "false")
+        self.assertEqual(result["RATE"], "0.5")
+        self.assertNotIn("OPTIONAL", result)
         self.assertEqual(result["TRUSTED"], "${MY_TOKEN}")
         self.assertEqual(result["REFERENCE"], "${env:MY_TOKEN}")
         self.assertEqual(result["ENVPREFIX"], "${env:MY_TOKEN}")

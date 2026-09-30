@@ -324,9 +324,12 @@ For other authenticated remote servers, set headers explicitly with
 ## Updating and replacing a server
 
 If an older install already wrote a resolved secret into `.cursor/mcp.json`,
-reinstalling does not rewrite that existing server entry. Remove the affected
-entry (or file) and install it again to replace it with runtime references.
-Rotate any credential that was exposed in a committed or shared config.
+reinstalling does not rewrite that existing server entry. Ensure the manifest
+uses environment references, then replace only the affected header or `env`
+values in `.cursor/mcp.json` with `${env:NAME}` references. Make those variables
+available to Cursor, preserve other fields and servers, and inspect the diff.
+Static manifest values would otherwise be written again if the entry were
+regenerated. Rotate any credential exposed in a committed or shared config.
 
 Re-run `apm install --mcp NAME ...` against an existing entry:
 

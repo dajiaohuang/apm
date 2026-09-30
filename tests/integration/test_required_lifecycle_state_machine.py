@@ -150,6 +150,7 @@ def _publish(
     agent: str | None = None,
     hook_command: str | None = None,
     mcp: bool = False,
+    mcp_env: dict[str, str] | None = None,
 ) -> _PublishedPackage:
     mcp_dependencies: tuple[dict[str, object], ...] = ()
     if mcp:
@@ -160,6 +161,7 @@ def _publish(
                 "transport": "stdio",
                 "command": "printf",
                 "args": ["fixture"],
+                **({"env": mcp_env} if mcp_env is not None else {}),
             },
         )
     package = scenario.sources.create(
@@ -2522,11 +2524,20 @@ def test_required_failed_lock_write_bounds_partial_state_and_recovers(
     assert audit["passed"] is True
 
 
+@pytest.mark.parametrize(
+    ("target", "mcp_path"),
+    [("claude", ".mcp.json"), ("cursor", ".cursor/mcp.json")],
+)
 def test_required_mixed_primitives_survive_reinstall_without_state_loss(
     tmp_path: Path,
     apm_binary_path: Path,
+    target: str,
+    mcp_path: str,
 ) -> None:
     scenario = _new_scenario(tmp_path / "mixed-primitives", apm_binary_path)
+    mcp_env = (
+        {"REFERENCE": "${CURSOR_TOKEN}", "STATIC": "authored-value"} if target == "cursor" else None
+    )
     source = _publish(
         scenario,
         "mixed-kit",
@@ -2534,52 +2545,82 @@ def test_required_mixed_primitives_survive_reinstall_without_state_loss(
         instruction="mixed",
         hook_command="echo mixed",
         mcp=True,
+        mcp_env=mcp_env,
     )
     consumer = scenario.consumers.create(
         "mixed-consumer",
         dependencies=(source.dependency,),
-        targets=("claude",),
+        targets=(target,),
     )
+    profile = KNOWN_TARGETS[target]
+    skill_mapping = profile.primitives["skills"]
+    instruction_mapping = profile.primitives["instructions"]
+    skill_path = (
+        PurePosixPath(skill_mapping.deploy_root or profile.root_dir)
+        / skill_mapping.subdir
+        / "mixed"
+        / "SKILL.md"
+    ).as_posix()
+    instruction_path = (
+        PurePosixPath(profile.root_dir)
+        / instruction_mapping.subdir
+        / f"mixed{instruction_mapping.extension}"
+    ).as_posix()
+    hook_sidecar = f"{profile.root_dir}/apm-hooks.json"
     capture_args = {
-        "targets": ("claude",),
-        "config_paths": (PurePosixPath(".mcp.json"),),
+        "targets": (target,),
+        "config_paths": (PurePosixPath(mcp_path),),
     }
+    environment = dict(source.environment)
+    environment["CURSOR_TOKEN"] = "lifecycle-first-sentinel"
 
-    _run_success(
+    first = _run_success(
         scenario,
         consumer,
         _INSTALL_ARGS,
-        environment=source.environment,
+        environment=environment,
         scenario_id="mixed-primitives-install-first",
     )
     before = LifecycleStateSnapshot.capture(consumer.root, **capture_args)
-    _run_success(
+    environment["CURSOR_TOKEN"] = "lifecycle-second-sentinel"
+    second = _run_success(
         scenario,
         consumer,
         _INSTALL_ARGS,
-        environment=source.environment,
+        environment=environment,
         scenario_id="mixed-primitives-install-second",
     )
     after = LifecycleStateSnapshot.capture(consumer.root, **capture_args)
     _, audit = _audit(
         scenario,
         consumer,
-        environment=source.environment,
+        environment=environment,
         scenario_id="mixed-primitives-audit",
     )
 
-    assert (
-        before.file(".claude/skills/mixed/SKILL.md").content
-        == after.file(".claude/skills/mixed/SKILL.md").content
-    )
-    assert (
-        before.file(".claude/rules/mixed.md").content
-        == after.file(".claude/rules/mixed.md").content
-    )
-    assert _hook_commands(consumer.root / ".claude" / "settings.json") == ["echo mixed"]
-    assert after.file(".claude/apm-hooks.json").kind == "file"
-    mcp_document = json.loads(after.file(".mcp.json").content or b"{}")
+    assert before.file(skill_path).kind == "file"
+    assert before.file(skill_path).content == after.file(skill_path).content
+    assert before.file(instruction_path).kind == "file"
+    assert before.file(instruction_path).content == after.file(instruction_path).content
+    if target == "claude":
+        assert _hook_commands(consumer.root / ".claude" / "settings.json") == ["echo mixed"]
+    else:
+        hooks = json.loads((consumer.root / profile.hooks_config_display).read_text())
+        assert hooks["hooks"]
+        assert "echo mixed" in json.dumps(hooks)
+    assert after.file(hook_sidecar).kind == "file"
+    assert before.file(mcp_path).kind == "file"
+    assert before.file(mcp_path).content == after.file(mcp_path).content
+    mcp_document = json.loads(after.file(mcp_path).content or b"{}")
     assert list(mcp_document["mcpServers"]) == ["fixture-mcp"]
+    if target == "cursor":
+        assert mcp_document["mcpServers"]["fixture-mcp"]["env"] == {
+            "REFERENCE": "${env:CURSOR_TOKEN}",
+            "STATIC": "authored-value",
+        }
+        for sentinel in ("lifecycle-first-sentinel", "lifecycle-second-sentinel"):
+            assert sentinel not in json.dumps(mcp_document)
+            assert sentinel not in first.stdout + first.stderr + second.stdout + second.stderr
     assert before.mcp_state_bytes == after.mcp_state_bytes
     assert before.semantic_bytes == after.semantic_bytes
     assert audit["passed"] is True
