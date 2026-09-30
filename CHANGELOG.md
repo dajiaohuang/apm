@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - OpenCode MCP installs and reinstalls preserve an explicitly supplied `enabled` value and JSON type; omitted values still default to `true` - by @dajiaohuang (#3102).
+- Cursor rules now use comma-joined `globs` and readable descriptions, while retaining safe escaping for control characters. (by @YGuyomar, #3011)
 
 ## [0.32.0] - 2026-09-25
 
