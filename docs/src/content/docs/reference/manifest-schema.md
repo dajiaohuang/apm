@@ -662,8 +662,8 @@ Values in `headers` and `env` may contain three placeholder syntaxes. APM resolv
 For recognized GitHub MCP servers, automatic authentication follows the
 same target capability: runtime-capable targets write a native reference
 to the selected token environment variable, while literal-only targets
-retain their existing automatic-token behavior. A manifest-supplied
-`Authorization` header takes precedence over automatic authentication.
+retain their existing automatic-token behavior. A manifest-supplied nonempty
+string `Authorization` value takes precedence over automatic authentication.
 See [Token injection: GitHub MCP server](../../consumer/install-mcp-servers/#token-injection-github-mcp-server)
 for the selection order and guidance for repairing existing generated
 configurations.
