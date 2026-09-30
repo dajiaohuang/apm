@@ -159,6 +159,8 @@ For OpenCode, set the top-level `enabled` field on an MCP dependency to pass a
 value unchanged into that server's `opencode.json` entry. If omitted, APM keeps
 the existing `true` default. APM does not validate or coerce explicit values;
 OpenCode interprets them. Other targets ignore this OpenCode-only field.
+Reinstall applies changes to `enabled`, including its JSON type; removing
+the field restores `true`. OpenCode remains project-only.
 
 ## How `targets:` gates which configs get written
 

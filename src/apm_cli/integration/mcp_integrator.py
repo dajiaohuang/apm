@@ -35,6 +35,7 @@ from apm_cli.integration.mcp_config_view import (
     _get_server_configs,
     _get_server_provenance,
 )
+from apm_cli.models.dependency.mcp import opencode_enabled_matches
 from apm_cli.runtime.utils import find_runtime_binary
 from apm_cli.utils.atomic_io import atomic_write_text
 from apm_cli.utils.console import (
@@ -481,8 +482,7 @@ class MCPIntegrator:
         if dep.tools:
             info["_apm_tools_override"] = dep.tools
 
-        if dep.has_enabled:
-            info["_apm_opencode_enabled"] = dep.enabled
+        dep.apply_opencode_enabled(info)
 
         # Pass through harness-specific extra keys for adapters to merge
         if dep.extra:
@@ -502,11 +502,7 @@ class MCPIntegrator:
         if not info:
             return
 
-        # Registry data is external input. Never trust a field that collides
-        # with this adapter-only marker from the registry response itself.
-        info.pop("_apm_opencode_enabled", None)
-        if dep.has_enabled:
-            info["_apm_opencode_enabled"] = dep.enabled
+        dep.apply_opencode_enabled(info)
 
         # Transport overlay: select matching transport from available options
         if dep.transport:
@@ -635,7 +631,9 @@ class MCPIntegrator:
                 continue
             current_config = dep.to_dict()
             stored = stored_configs.get(dep.name)
-            if stored is not None and stored != current_config:
+            if stored is not None and (
+                stored != current_config or not opencode_enabled_matches(current_config, stored)
+            ):
                 drifted.add(dep.name)
         return drifted
 

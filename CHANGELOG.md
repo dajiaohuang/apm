@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- OpenCode MCP installs now preserve an explicitly supplied `enabled` value, including `false`, `null`, and non-boolean JSON values; omitted values still default to `true`.
+- OpenCode MCP installs and reinstalls preserve an explicitly supplied `enabled` value and JSON type; omitted values still default to `true` - by @dajiaohuang (#3102).
 
 ## [0.32.0] - 2026-09-25
 

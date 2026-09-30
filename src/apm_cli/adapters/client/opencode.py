@@ -31,7 +31,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from ...models.dependency.mcp import _EXTRA_DENYLIST
+from ...models.dependency.mcp import _EXTRA_DENYLIST, opencode_enabled_value
 from .copilot import CopilotClientAdapter
 
 
@@ -123,7 +123,7 @@ class OpenCodeClientAdapter(CopilotClientAdapter):
             server_config = self._format_server_config(server_info, env_overrides, runtime_vars)
             self.update_config(
                 {config_key: server_config},
-                enabled=server_info.get("_apm_opencode_enabled", enabled),
+                enabled=opencode_enabled_value(server_info, enabled),
             )
 
             print(f"Successfully configured MCP server '{config_key}' for OpenCode")

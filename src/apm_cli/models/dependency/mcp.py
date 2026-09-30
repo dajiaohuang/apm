@@ -1,5 +1,6 @@
 """MCP dependency model."""
 
+import json
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -61,6 +62,32 @@ class _UnsetEnabled(Enum):
 
 # Distinguish an explicit OpenCode ``enabled: null`` from an omitted key.
 _ENABLED_UNSET = _UnsetEnabled.VALUE
+OPENCODE_ENABLED_KEY = "_apm_opencode_enabled"
+
+
+@dataclass(frozen=True)
+class OpenCodeEnabled:
+    """Manifest intent, distinct from JSON supplied by an MCP registry."""
+
+    value: Any
+
+
+def opencode_enabled_value(server_info: dict, default: Any = True) -> Any:
+    """Read only model-authored enabled metadata; registry JSON is untrusted."""
+    intent = server_info.get(OPENCODE_ENABLED_KEY)
+    return intent.value if isinstance(intent, OpenCodeEnabled) else default
+
+
+def opencode_enabled_matches(current: dict, stored: dict) -> bool:
+    """Compare presence and JSON type, including nested bool/number changes."""
+    if ("enabled" in current) != ("enabled" in stored):
+        return False
+    if "enabled" not in current:
+        return True
+    return json.dumps(current["enabled"], sort_keys=True) == json.dumps(
+        stored["enabled"], sort_keys=True
+    )
+
 
 _NAME_REGEX = re.compile(r"^[a-zA-Z0-9@_][a-zA-Z0-9._@/:=-]{0,127}$")
 _ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
@@ -197,6 +224,12 @@ class MCPDependency:
     def has_enabled(self) -> bool:
         """Whether the manifest explicitly supplied OpenCode's ``enabled`` value."""
         return self.enabled is not _ENABLED_UNSET
+
+    def apply_opencode_enabled(self, server_info: dict) -> None:
+        """Replace registry metadata with optional, trusted manifest intent."""
+        server_info.pop(OPENCODE_ENABLED_KEY, None)
+        if self.has_enabled:
+            server_info[OPENCODE_ENABLED_KEY] = OpenCodeEnabled(self.enabled)
 
     def to_dict(self) -> dict:
         """Serialize non-None fields, preserving an explicitly supplied enabled value.

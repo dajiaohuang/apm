@@ -294,6 +294,14 @@ MUTATIONS: tuple[MutationCase, ...] = (
         intent="HookIntegrator stops owning the neutral hook rewrite-scope resolver.",
     ),
     MutationCase(
+        guard_id="hooks-integrations-opencode-enabled-intent",
+        rule_id="mutation_writes.opencode_enabled_intent",
+        path="src/apm_cli/models/dependency/mcp.py",
+        old="return self.enabled is not _ENABLED_UNSET",
+        new="return bool(self.enabled)",
+        intent="Explicit false and null become omission instead of manifest intent.",
+    ),
+    MutationCase(
         guard_id="hooks-integrations-user-root-scope",
         rule_id="mutation_writes.user_root_scope",
         path="src/apm_cli/integration/targets.py",
