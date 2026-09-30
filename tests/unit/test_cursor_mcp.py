@@ -246,6 +246,78 @@ class TestCursorFormatServerConfig(unittest.TestCase):
         self.assertEqual(config["url"], "https://mcp.example.com/sse")
         self._assert_no_copilot_fields(config)
 
+    def test_format_raw_stdio_command_uses_cursor_runtime_references(self):
+        server_info = {
+            "name": "stdio-server",
+            "_raw_stdio": {
+                "command": "${NODE_BIN}",
+                "args": [],
+            },
+        }
+
+        config = self.adapter._format_server_config(
+            server_info, env_overrides={"NODE_BIN": "secret-command"}
+        )
+
+        self.assertEqual(config["command"], "${env:NODE_BIN}")
+        self.assertNotIn("secret-command", json.dumps(config))
+
+    def test_format_remote_url_uses_cursor_runtime_references(self):
+        server_info = {
+            "name": "remote-server",
+            "remotes": [
+                {
+                    "url": "https://mcp.example.com?token=${API_TOKEN}",
+                    "transport_type": "http",
+                },
+            ],
+        }
+
+        config = self.adapter._format_server_config(
+            server_info, env_overrides={"API_TOKEN": "secret-token"}
+        )
+
+        self.assertEqual(config["url"], "https://mcp.example.com?token=${env:API_TOKEN}")
+        self.assertNotIn("secret-token", json.dumps(config))
+
+    def test_overlay_dictionary_headers_format_without_losing_auth_provenance(self):
+        from apm_cli.integration.mcp_integrator import MCPIntegrator
+        from apm_cli.models.dependency.mcp import MCPDependency
+
+        server_info = {
+            "name": "github-mcp-server",
+            "remotes": [
+                {
+                    "url": "https://api.githubcopilot.com/mcp/",
+                    "transport_type": "http",
+                    "headers": {"Authorization": "registry-default", "X-Registry": "kept"},
+                },
+            ],
+        }
+        dependency = MCPDependency(
+            name="github-mcp-server",
+            headers={"Authorization": "Bearer ${USER_PAT}", "X-Manifest": "${MANIFEST_TOKEN}"},
+        )
+
+        MCPIntegrator._apply_overlay({"github-mcp-server": server_info}, dependency)
+
+        with (
+            patch.dict(os.environ, {"GITHUB_TOKEN": "ambient-secret"}, clear=True),
+            patch("apm_cli.adapters.client.cursor.GitHubTokenManager") as mock_tm,
+        ):
+            config = self.adapter._format_server_config(server_info)
+
+        self.assertEqual(
+            config["headers"],
+            {
+                "Authorization": "Bearer ${env:USER_PAT}",
+                "X-Registry": "kept",
+                "X-Manifest": "${env:MANIFEST_TOKEN}",
+            },
+        )
+        self.assertNotIn("ambient-secret", json.dumps(config))
+        mock_tm.assert_not_called()
+
     def test_format_npm_package_emits_type_stdio(self):
         """npm package server produces type=stdio, command=npx and args, no tools/id."""
         server_info = {

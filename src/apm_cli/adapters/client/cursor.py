@@ -174,7 +174,7 @@ class CursorClientAdapter(CopilotClientAdapter):
         raw = server_info.get("_raw_stdio")
         if raw:
             config["type"] = "stdio"
-            config["command"] = raw["command"]
+            config["command"] = self._resolve_env_variable("command", raw["command"], env_overrides)
             if raw.get("cwd") is not None:
                 config["cwd"] = raw["cwd"]
             resolved_env_for_args: dict = {}
@@ -210,7 +210,9 @@ class CursorClientAdapter(CopilotClientAdapter):
                 )
 
             config["type"] = "http"
-            config["url"] = (remote.get("url") or "").strip()
+            config["url"] = self._resolve_env_variable(
+                "url", (remote.get("url") or "").strip(), env_overrides
+            )
 
             self._apply_auth_and_headers(config, remote, server_info, env_overrides, "Cursor")
             self._merge_extra(config, server_info)

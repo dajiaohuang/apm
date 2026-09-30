@@ -1439,6 +1439,8 @@ class MCPClientAdapter(ABC):
         is_github_server = self._is_github_server(server_name, remote.get("url", ""))
         local_token_injected = False
         headers = remote.get("headers", []) or []
+        if isinstance(headers, dict):
+            headers = [{"name": name, "value": value} for name, value in headers.items()]
         explicit_authorization = any(
             isinstance(header, dict)
             and isinstance(header.get("name"), str)
