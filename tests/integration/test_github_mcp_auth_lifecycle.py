@@ -78,10 +78,22 @@ def _assert_no_secret(root: Path, secrets: list[str], runtime: str = "copilot") 
     assert config["user-setting"] is True
 
 
-@pytest.mark.parametrize("winner", range(len(SOURCES) + 1))
+@pytest.mark.parametrize(
+    "winner,manifest_headers",
+    [
+        *((winner, {}) for winner in range(len(SOURCES) + 1)),
+        (1, {"authorization": None}),
+        (1, {"authorization": False}),
+        (1, {"authorization": 0}),
+    ],
+)
 @pytest.mark.parametrize("runtime", ["copilot", "cursor"])
 def test_installed_auto_auth_uses_selected_source(
-    tmp_path: Path, apm_binary_path: Path, winner: int, runtime: str
+    tmp_path: Path,
+    apm_binary_path: Path,
+    winner: int,
+    manifest_headers: dict[str, str | bool | int | None],
+    runtime: str,
 ) -> None:
     """All four precedence winners and the absent-source case reach disk safely."""
     isolated = IsolatedApmEnvironment.create(tmp_path / "source", base_env=dict(os.environ))
@@ -100,6 +112,7 @@ def test_installed_auto_auth_uses_selected_source(
                 "registry": False,
                 "transport": "http",
                 "url": "https://api.githubcopilot.com/mcp/",
+                "headers": manifest_headers,
             },
         ),
     )
@@ -195,13 +208,14 @@ def test_cursor_unadmitted_server_does_not_receive_automatic_auth(
         ({"authorization": ""}, "Bearer ${GITHUB_TOKEN}"),
         ({"authorization": "Bearer ${env:USER_PAT}"}, "Bearer ${USER_PAT}"),
         ({"AUTHORIZATION": "explicit-static-value"}, "explicit-static-value"),
-    ],
+    ]
+    + [({"authorization": value}, "Bearer ${GITHUB_TOKEN}") for value in (None, False, 0)],
 )
 @pytest.mark.parametrize("runtime", ["copilot", "cursor"])
 def test_registry_provenance_survives_install_reinstall_and_repair(
     tmp_path: Path,
     apm_binary_path: Path,
-    manifest_headers: dict[str, str],
+    manifest_headers: dict[str, str | bool | int | None],
     expected: str,
     runtime: str,
 ) -> None:

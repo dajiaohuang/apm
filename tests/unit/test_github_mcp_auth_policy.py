@@ -12,7 +12,7 @@ from apm_cli.adapters.client.copilot import CopilotClientAdapter
 from apm_cli.adapters.client.intellij import IntelliJClientAdapter
 from apm_cli.adapters.client.windsurf import WindsurfClientAdapter
 from apm_cli.integration.mcp_integrator import MCPIntegrator
-from apm_cli.models.dependency.mcp import MCPDependency
+from apm_cli.models.dependency.mcp import ManifestHeaderValue, MCPDependency
 
 pytestmark = pytest.mark.component
 
@@ -25,14 +25,35 @@ pytestmark = pytest.mark.component
         (WindsurfClientAdapter, "Bearer ambient-sentinel"),
     ],
 )
-@pytest.mark.parametrize("explicit", [None, "", "static-auth", "${env:USER_PAT}"])
+@pytest.mark.parametrize(
+    "manifest_headers",
+    [
+        {},
+        {"authorization": None},
+        {"authorization": False},
+        {"authorization": 0},
+        {"authorization": ""},
+        {"authorization": "static-auth"},
+        {"authorization": "${env:USER_PAT}"},
+    ],
+)
+@pytest.mark.parametrize("source", ["registry", "self-defined"])
 def test_shared_policy_preserves_registry_fallback_and_manifest_precedence(
-    tmp_path: Path, adapter_class: type[CopilotClientAdapter], automatic: str, explicit: str | None
+    tmp_path: Path,
+    adapter_class: type[CopilotClientAdapter],
+    automatic: str,
+    manifest_headers: dict[str, str | bool | int | None],
+    source: str,
 ) -> None:
     """Real model/overlay/formatter consumers agree on the single header winner."""
-    declaration = {"name": "github-mcp-server"}
-    if explicit is not None:
-        declaration["headers"] = {"authorization": explicit}
+    declaration = {"name": "github-mcp-server", "headers": manifest_headers}
+    if source == "self-defined":
+        declaration.update(
+            registry=False,
+            transport="http",
+            url="https://api.githubcopilot.com/mcp/",
+            headers={**manifest_headers, "X-Other": "preserved"},
+        )
     dep = MCPDependency.from_dict(declaration)
     remote = {
         "url": "https://api.githubcopilot.com/mcp/",
@@ -41,8 +62,11 @@ def test_shared_policy_preserves_registry_fallback_and_manifest_precedence(
             {"name": "X-Other", "value": "preserved"},
         ],
     }
-    info = {"name": dep.name, "remotes": [remote]}
-    MCPIntegrator._apply_overlay({dep.name: info}, dep)
+    if source == "self-defined":
+        info = MCPIntegrator._build_self_defined_info(dep)
+    else:
+        info = {"name": dep.name, "remotes": [remote]}
+        MCPIntegrator._apply_overlay({dep.name: info}, dep)
     with patch.dict(
         os.environ,
         {
@@ -55,6 +79,7 @@ def test_shared_policy_preserves_registry_fallback_and_manifest_precedence(
     ):
         config = adapter_class()._format_server_config(info)
     expected = automatic
+    explicit = manifest_headers.get("authorization")
     if explicit == "static-auth":
         expected = explicit
     elif explicit:
@@ -67,6 +92,20 @@ def test_shared_policy_preserves_registry_fallback_and_manifest_precedence(
         value for name, value in config["headers"].items() if name.casefold() == "authorization"
     ] == [expected]
     assert config["headers"]["X-Other"] == "preserved"
+
+
+@pytest.mark.parametrize("value", [None, False, 0, "", "static-auth"])
+def test_dictionary_overlay_tags_strings_without_coercing_values(
+    value: str | bool | int | None,
+) -> None:
+    """Dictionary-shaped registry headers retain the authored value and type."""
+    dep = MCPDependency.from_dict({"name": "github", "headers": {"Authorization": value}})
+    info = {"remotes": [{"headers": {"X-Other": "preserved"}}]}
+    MCPIntegrator._apply_overlay({dep.name: info}, dep)
+    headers = info["remotes"][0]["headers"]
+    assert headers["Authorization"] == value
+    assert isinstance(headers["Authorization"], ManifestHeaderValue) == isinstance(value, str)
+    assert headers["X-Other"] == "preserved"
 
 
 @pytest.mark.parametrize(
