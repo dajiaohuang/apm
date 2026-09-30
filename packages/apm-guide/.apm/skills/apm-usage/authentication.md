@@ -13,7 +13,7 @@ recognized GitHub MCP server, the first nonempty variable wins:
 Runtime-capable targets write the selected variable's native reference;
 literal-only targets retain their existing token behavior.
 
-A nonempty manifest `Authorization` header wins, regardless of header-name
+A nonempty string manifest `Authorization` value wins, regardless of header-name
 casing. Registry headers alone do not disable automatic authentication.
 Reinstalling the same declaration does not automatically repair existing
 credentials. Follow [Repairing existing credentials](https://microsoft.github.io/apm/consumer/install-mcp-servers/#repairing-existing-credentials)

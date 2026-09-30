@@ -508,7 +508,7 @@ dependencies:
 
 For a recognized GitHub MCP server, automatic auth follows the target's
 runtime support and uses the selected token environment variable name on
-runtime-capable targets. A manifest `Authorization` header takes
+runtime-capable targets. A nonempty string manifest `Authorization` value takes
 precedence. Follow [Repairing existing credentials](https://microsoft.github.io/apm/consumer/install-mcp-servers/#repairing-existing-credentials)
 to replace previously written credentials without losing custom fields.
 See the [MCP
