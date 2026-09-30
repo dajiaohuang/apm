@@ -1564,8 +1564,7 @@ class AgentsCompiler:
         routing_target = "vscode" if config.target in _VSCODE_TARGET_ALIASES else config.target
         output_path = self.base_dir / ".github" / "copilot-instructions.md"
         if not should_compile_copilot_instructions_md(routing_target):
-            if not config.dry_run:
-                self._cleanup_copilot_root_instructions(output_path, result)
+            self._cleanup_copilot_root_instructions(output_path, result, dry_run=config.dry_run)
             result.stats.setdefault("copilot_root_instructions_generated", 0)
             result.stats.setdefault("copilot_root_instructions_written", 0)
             result.stats.setdefault("copilot_root_instructions_unchanged", 0)
@@ -1607,8 +1606,7 @@ class AgentsCompiler:
                 global_instructions = remaining_instructions
 
         if not global_instructions:
-            if not config.dry_run:
-                self._cleanup_copilot_root_instructions(output_path, result)
+            self._cleanup_copilot_root_instructions(output_path, result, dry_run=config.dry_run)
             result.stats.setdefault("copilot_root_instructions_generated", 0)
             result.stats.setdefault("copilot_root_instructions_written", 0)
             result.stats.setdefault("copilot_root_instructions_unchanged", 0)
@@ -1740,6 +1738,8 @@ class AgentsCompiler:
         self,
         output_path: Path,
         result: CompilationResult,
+        *,
+        dry_run: bool = False,
     ) -> CompilationResult:
         """Remove stale generated Copilot root instructions when no longer applicable."""
         if output_path.is_symlink():
@@ -1764,6 +1764,15 @@ class AgentsCompiler:
                     f"Retained {portable_relpath(output_path, self.base_dir)}: "
                     "the generated marker is present, but the Build ID does not match "
                     "the current content."
+                )
+                result.stats.setdefault("copilot_root_instructions_removed", 0)
+                return result
+
+            if dry_run:
+                result.warnings.append(
+                    f"[dry-run] would remove stale "
+                    f"{portable_relpath(output_path, self.base_dir)} -- "
+                    "generated Copilot instructions are no longer required."
                 )
                 result.stats.setdefault("copilot_root_instructions_removed", 0)
                 return result

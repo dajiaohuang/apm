@@ -579,6 +579,42 @@ Use type hints in Python code.
         assert not root_file.exists()
         assert second.stats["copilot_root_instructions_removed"] == 1
 
+    def test_target_minimal_dry_run_previews_stale_copilot_root_removal(self, temp_project):
+        """A dry run previews generated Copilot cleanup without deleting the file."""
+        primitives = PrimitiveCollection()
+        primitives.add_primitive(
+            Instruction(
+                name="contributing",
+                file_path=temp_project / ".apm/instructions/contributing.instructions.md",
+                description="General contributing guidance",
+                apply_to="",
+                content="Always run lint.",
+                author="test",
+                source="local",
+            )
+        )
+        compiler = AgentsCompiler(str(temp_project))
+        first = compiler.compile(
+            CompilationConfig(target="vscode", dry_run=False, single_agents=True),
+            primitives,
+        )
+        assert first.success
+        root_file = temp_project / ".github" / "copilot-instructions.md"
+        assert root_file.exists()
+
+        preview = compiler.compile(
+            CompilationConfig(target="minimal", dry_run=True, single_agents=True),
+            primitives,
+        )
+
+        assert preview.success
+        assert root_file.exists()
+        assert preview.stats["copilot_root_instructions_removed"] == 0
+        assert any(
+            "[dry-run] would remove stale .github/copilot-instructions.md" in warning
+            for warning in preview.warnings
+        )
+
     def test_scoped_only_rules_remove_stale_generated_copilot_root_instructions(self, temp_project):
         """Scoped-only compile should clean stale generated root Copilot instructions."""
         compiler = AgentsCompiler(str(temp_project))

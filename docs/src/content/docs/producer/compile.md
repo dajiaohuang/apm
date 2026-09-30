@@ -171,6 +171,8 @@ without a matching deployed rule remain in `copilot-instructions.md`. When every
 global instruction is already deployed, compile removes an old generated root
 file only when its APM marker and Build ID still match its content. Hand-authored,
 edited, or linked root files are retained.
+Use `apm compile --dry-run` to preview removal of a matching generated file
+without changing it.
 
 The existing `AGENTS.md` deduplication also omits the file entirely when the
 only content it would carry is the instructions section. `AGENTS.md` is still
