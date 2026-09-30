@@ -422,7 +422,10 @@ class TestMcpEnvVarHeadersCursor:
                     "registry": False,
                     "transport": "http",
                     "url": "https://example.invalid/mcp",
-                    "headers": {"x-probe": "${CURSOR_TOKEN}"},
+                    "headers": {
+                        "x-probe": "${CURSOR_TOKEN}",
+                        "Authorization": "Bearer ${CURSOR_TOKEN}",
+                    },
                 }
             ],
         )
@@ -433,7 +436,10 @@ class TestMcpEnvVarHeadersCursor:
                 "repair-probe": {
                     "type": "http",
                     "url": "https://example.invalid/mcp",
-                    "headers": {"x-probe": "old-baked-sentinel"},
+                    "headers": {
+                        "x-probe": "old-baked-sentinel",
+                        "Authorization": "Bearer old-baked-sentinel",
+                    },
                     "user-setting": "retain",
                 },
                 "unrelated": unrelated,
@@ -447,6 +453,9 @@ class TestMcpEnvVarHeadersCursor:
         assert result.returncode == 0, result.stdout + result.stderr
         assert cursor_config.read_bytes() == before
         document["mcpServers"]["repair-probe"]["headers"]["x-probe"] = "${env:CURSOR_TOKEN}"
+        document["mcpServers"]["repair-probe"]["headers"]["Authorization"] = (
+            "Bearer ${env:CURSOR_TOKEN}"
+        )
         cursor_config.write_text(json.dumps(document), encoding="utf-8")
         repaired = cursor_config.read_bytes()
         repeated = runner.run(
@@ -470,12 +479,22 @@ class TestMcpEnvVarHeadersCursor:
         assert recreated.returncode == 0, recreated.stdout + recreated.stderr
         regenerated = cursor_config.read_text(encoding="utf-8")
         stored = json.loads(regenerated)
-        assert stored["mcpServers"]["repair-probe"]["headers"] == {"x-probe": "${env:CURSOR_TOKEN}"}
+        assert stored["mcpServers"]["repair-probe"]["headers"] == {
+            "x-probe": "${env:CURSOR_TOKEN}",
+            "Authorization": "Bearer ${env:CURSOR_TOKEN}",
+        }
         assert stored["mcpServers"]["unrelated"] == unrelated
         assert stored["user-setting"] == {"keep": True}
         for sentinel in ("old-baked-sentinel", "current-cursor-sentinel"):
             assert sentinel not in regenerated
             assert sentinel not in recreated.stdout + recreated.stderr
+        stored["mcpServers"]["repair-probe"]["user-setting"] = "retain"
+        cursor_config.write_text(json.dumps(stored), encoding="utf-8")
+        restored = cursor_config.read_bytes()
+        final = runner.run(("install", "--target", "cursor", "--no-policy"), cwd=project, env=env)
+        assert final.returncode == 0, final.stdout + final.stderr
+        assert cursor_config.read_bytes() == restored
+        assert "current-cursor-sentinel" not in final.stdout + final.stderr
 
     @pytest.mark.parametrize(
         ("required_value", "optional_value"),
